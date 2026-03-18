@@ -177,17 +177,13 @@ class Scene {
     }
 
     /**
-     * Returns the first node whose `name` matches, searching both live nodes
-     * and those still in `pending`. Returns `null` if not found.
+     * Returns the first node whose `name` matches. Returns `null` if not found.
      *
      * @param {string} name
      * @returns {SceneNode | null}
      */
     findNode(name) {
         for (const node of this.nodes) {
-            if (node.name === name) return node;
-        }
-        for (const node of this.pending) {
             if (node.name === name) return node;
         }
         return null;
@@ -241,6 +237,10 @@ class Scene {
     }
 }
 
+/**
+ * 3rd core class
+ * Building block of scene.
+ */
 class SceneNode {
     static _nextId = 0;
 
@@ -256,12 +256,163 @@ class SceneNode {
      * @type {Scene | null}
      */
     scene;
+    /**
+     * Local position.
+     * @type {Vector}
+     */
+    position;
+    /**
+     * Local rotation in radians.
+     * @type {number}
+     */
+    angle;
+    /**
+     * Local scale.
+     * @type {Vector}
+     */
+    scale;
+    /**
+     * @type {SceneNode | null}
+     */
+    parent;
 
     constructor() {
         this.id = SceneNode._nextId++;
         this.name = `node_${this.id}`;
         this.scene = null;
+        this.position = Vector.zero();
+        this.angle = 0;
+        this.scale = Vector.one();
+        this.parent = null;
     }
+
+    /**
+     * Sets the parent of this node. When `keepWorldPosition` is true the
+     * local transform is recalculated so the node stays at its current world
+     * position / angle / scale after reparenting.
+     *
+     * @param {SceneNode | null} node
+     * @param {boolean} keepWorldPosition
+     */
+    setParent(node, keepWorldPosition = false) {
+        if (keepWorldPosition) {
+            const wp = this.getWorldPosition();
+            const wa = this.getWorldAngle();
+            const ws = this.getWorldScale();
+            this.parent = node;
+            this.setWorldPosition(wp);
+            this.setWorldAngle(wa);
+            this.setWorldScale(ws);
+        } else {
+            this.parent = node;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // World position
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns the world-space position of this node as a Vector.
+     * `angle` is treated as radians.
+     *
+     * @returns {Vector}
+     */
+    getWorldPosition() {
+        if (!this.parent) return this.position.clone();
+        const p = this.parent.getWorldPosition();
+        const pa = this.parent.getWorldAngle();
+        const ps = this.parent.getWorldScale();
+        return p.add(this.position.clone().mul(ps).rotate(pa));
+    }
+
+    /**
+     * @param {Vector} w
+     */
+    setWorldPosition(w) {
+        if (!this.parent) {
+            this.position.set(w.x, w.y);
+            return;
+        }
+        const p = this.parent.getWorldPosition();
+        const pa = this.parent.getWorldAngle();
+        const ps = this.parent.getWorldScale();
+        this.position.copy(w.sub(p).rotate(-pa).div(ps));
+    }
+
+    /**
+     * @param {number} wx
+     */
+    setWorldPositionX(wx) {
+        this.setWorldPosition(new Vector(wx, this.getWorldPosition().y));
+    }
+
+    /**
+     * @param {number} wy
+     */
+    setWorldPositionY(wy) {
+        this.setWorldPosition(new Vector(this.getWorldPosition().x, wy));
+    }
+
+    // -------------------------------------------------------------------------
+    // World angle (radians)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns the world-space angle of this node in radians.
+     *
+     * @returns {number}
+     */
+    getWorldAngle() {
+        if (!this.parent) return this.angle;
+        return this.parent.getWorldAngle() + this.angle;
+    }
+
+    /**
+     * @param {number} wa
+     */
+    setWorldAngle(wa) {
+        this.angle = this.parent ? wa - this.parent.getWorldAngle() : wa;
+    }
+
+    // -------------------------------------------------------------------------
+    // World scale
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns the world-space scale of this node as a Vector.
+     *
+     * @returns {Vector}
+     */
+    getWorldScale() {
+        if (!this.parent) return this.scale.clone();
+        return this.parent.getWorldScale().mul(this.scale);
+    }
+
+    /**
+     * @param {Vector} ws
+     */
+    setWorldScale(ws) {
+        this.scale.copy(this.parent ? ws.clone().div(this.parent.getWorldScale()) : ws.clone());
+    }
+
+    /**
+     * @param {number} wsx
+     */
+    setWorldScaleX(wsx) {
+        this.setWorldScale(new Vector(wsx, this.getWorldScale().y));
+    }
+
+    /**
+     * @param {number} wsy
+     */
+    setWorldScaleY(wsy) {
+        this.setWorldScale(new Vector(this.getWorldScale().x, wsy));
+    }
+
+    // -------------------------------------------------------------------------
+    // Lifecycle
+    // -------------------------------------------------------------------------
 
     /**
      * Called automatically before the start of its life cycle.
@@ -273,18 +424,18 @@ class SceneNode {
 
     /**
      * Called automatically every frame while it is alive.
-     * 
-     * @param {number} dt 
+     *
+     * @param {number} dt
      */
-    update(dt) { 
-        
+    update(dt) {
+
     }
 
     /**
      * Called automatically before the end of its life cycle.
      * All resources allocated outside of the node shall be cleaned up.
      */
-    destroy() { 
-        
+    destroy() {
+
     }
 }

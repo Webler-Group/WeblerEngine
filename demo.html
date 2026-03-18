@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WeblerEngine Demo</title>
+    <style>
+        body { background: #111; color: #eee; font-family: monospace; padding: 1rem; }
+        h2   { color: #7cf; margin: 1.5rem 0 0.25rem; }
+        p    { color: #aaa; margin: 0 0 0.5rem; font-size: 0.85rem; }
+        hr   { border-color: #333; margin: 1.5rem 0; }
+    </style>
+</head>
+<body>
+    <h1>WeblerEngine — Demo</h1>
+    <p>Open DevTools console to see all output.</p>
+    <hr>
+    <h2>1 · Scene lifecycle</h2>
+    <p>Nodes added before and during runtime, update ticks, removal.</p>
+    <h2>2 · Parent transforms</h2>
+    <p>World position / angle / scale propagation through a node hierarchy.</p>
+    <h2>3 · Scene switching</h2>
+    <p>SceneManager destroys the old scene and starts the new one.</p>
+    <hr>
+    <h2>4 · Transform unit tests</h2>
+    <p>Pass / fail assertions printed to the console.</p>
+
+    <script src="src/utils.js"></script>
+    <script src="src/core.js"></script>
+    <script>
+'use strict';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const rad = deg => deg * Math.PI / 180;
+const deg = r   => (r * 180 / Math.PI).toFixed(2);
+
+function approx(n, decimals = 4) {
+    const f = 10 ** decimals;
+    return Math.round(n * f) / f;
+}
+
+function logVec(label, v) {
+    console.log(`  ${label}: (${approx(v.x)}, ${approx(v.y)})`);
+}
+
+// ---------------------------------------------------------------------------
+// Section 1 — Scene lifecycle
+// ---------------------------------------------------------------------------
+console.group('1 · Scene lifecycle');
+
+class LifecycleNode extends SceneNode {
+    constructor(label) {
+        super();
+        this.name  = label;
+        this.ticks = 0;
+    }
+    start()    { console.log(`  [${this.name}] start()`); }
+    update(dt) {
+        this.ticks++;
+        if (this.ticks <= 2) console.log(`  [${this.name}] update(dt=${dt}) tick=${this.ticks}`);
+    }
+    destroy()  { console.log(`  [${this.name}] destroy()`); }
+}
+
+class LifecycleScene extends Scene {
+    start() {
+        super.start();
+        console.log('Scene started. Adding nodeA before first tick.');
+        this.addNode(new LifecycleNode('nodeA'));
+    }
+}
+
+const scene = new LifecycleScene();
+
+// Add nodeB before scene is running — goes straight into nodes[]
+const nodeB = new LifecycleNode('nodeB (pre-start)');
+scene.addNode(nodeB);          // start() NOT called yet (scene not running)
+console.log('nodeB added pre-start. nodes.length =', scene.nodes.length);
+
+scene.start();                 // triggers Scene.start → addNode(nodeA) → pending
+console.log('After scene.start(). pending.length =', scene.pending.length);
+
+// tick 1 — flushes pending (nodeA) and calls update on all
+console.log('— tick 1 —');
+scene.update(16);
+
+// tick 2 — add nodeC mid-flight equivalent (before this tick)
+const nodeC = new LifecycleNode('nodeC (mid-run)');
+scene.addNode(nodeC);
+console.log('nodeC staged in pending. pending.length =', scene.pending.length);
+console.log('— tick 2 —');
+scene.update(16);              // flushes nodeC, then updates all three
+
+// remove nodeA — should queue in pendingRemoval
+console.log('Removing nodeA → pendingRemoval');
+scene.removeNode(scene.findNode('nodeA'));
+console.log('pendingRemoval.length =', scene.pendingRemoval.length);
+
+console.log('— tick 3 —');
+scene.update(16);              // destroys nodeA, then updates remaining
+
+console.groupEnd();
+
+// ---------------------------------------------------------------------------
+// Section 2 — Parent transforms
+// ---------------------------------------------------------------------------
+console.group('2 · Parent transforms');
+
+//  root  (pos 10,0 | angle 90° | scale 2,2)
+//  └─ child  (pos 5,0 | angle 45° | scale 1,0.5)
+//     └─ grandchild  (pos 0,3 | angle 0° | scale 1,1)
+
+const root = new SceneNode();
+root.name = 'root';
+root.position.set(10, 0);
+root.angle = rad(90);
+root.scale.set(2, 2);
+
+const child = new SceneNode();
+child.name = 'child';
+child.position.set(5, 0);
+child.angle = rad(45);
+child.scale.set(1, 0.5);
+child.setParent(root);
+
+const grandchild = new SceneNode();
+grandchild.name = 'grandchild';
+grandchild.position.set(0, 3);
+grandchild.angle = rad(0);
+grandchild.scale.set(1, 1);
+grandchild.setParent(child);
+
+console.log('Hierarchy: root → child → grandchild');
+console.log('\nroot  local  pos(10,0) angle=90° scale(2,2)');
+console.log('child local  pos(5,0)  angle=45° scale(1,0.5)');
+console.log('grandchild local pos(0,3) angle=0° scale(1,1)');
+
+console.log('\n— World positions —');
+logVec('root       ', root.getWorldPosition());        // (10, 0)
+logVec('child      ', child.getWorldPosition());       // root rotated 90°: (10 + 5*2*cos90, 0 + 5*2*sin90) = (10, 10)
+logVec('grandchild ', grandchild.getWorldPosition());  // child + grandchild local rotated by child world angle
+
+console.log('\n— World angles (degrees) —');
+console.log('  root       :', deg(root.getWorldAngle()));        // 90
+console.log('  child      :', deg(child.getWorldAngle()));       // 135
+console.log('  grandchild :', deg(grandchild.getWorldAngle())); // 135
+
+console.log('\n— World scales —');
+logVec('root       ', root.getWorldScale());        // (2,2)
+logVec('child      ', child.getWorldScale());       // (2,1)
+logVec('grandchild ', grandchild.getWorldScale()); // (2,1)
+
+// --- setWorldPositionX/Y round-trip ---
+console.log('\n— setWorldPositionX/Y round-trip on grandchild —');
+logVec('before', grandchild.getWorldPosition());
+grandchild.setWorldPositionX(0);
+grandchild.setWorldPositionY(0);
+logVec('after setWorldPosition(0,0)', grandchild.getWorldPosition());
+logVec('grandchild local pos now', grandchild.position);
+
+// --- keepWorldPosition reparenting ---
+console.log('\n— setParent(keepWorldPosition=true) —');
+const detached = new SceneNode();
+detached.name = 'detached';
+detached.position.set(20, 20);
+logVec('detached world before reparent', detached.getWorldPosition()); // (20,20)
+detached.setParent(root, true);
+logVec('detached world after reparent to root', detached.getWorldPosition()); // still ~(20,20)
+logVec('detached local pos (recomputed)', detached.position);
+
+// --- setWorldAngle ---
+console.log('\n— setWorldAngle on child —');
+console.log('  child world angle before:', deg(child.getWorldAngle()));
+child.setWorldAngle(rad(0));
+console.log('  child world angle after setWorldAngle(0°):', deg(child.getWorldAngle()));
+console.log('  child local angle (recomputed):', deg(child.angle));
+
+// --- setWorldScale ---
+console.log('\n— setWorldScale on child —');
+logVec('child world scale before', child.getWorldScale());
+child.setWorldScale(new Vector(4, 4));
+logVec('child world scale after setWorldScale(4,4)', child.getWorldScale());
+logVec('child local scale (recomputed)', child.scale);
+
+console.groupEnd();
+
+// ---------------------------------------------------------------------------
+// Section 3 — Scene switching
+// ---------------------------------------------------------------------------
+console.group('3 · Scene switching');
+
+class SceneA extends Scene {
+    start()   { console.log('  SceneA start()'); this.addNode(new LifecycleNode('A-node')); }
+    destroy() { super.destroy(); console.log('  SceneA destroy()'); }
+}
+
+class SceneB extends Scene {
+    start()   { console.log('  SceneB start()'); this.addNode(new LifecycleNode('B-node')); }
+    destroy() { super.destroy(); console.log('  SceneB destroy()'); }
+}
+
+const manager = new SceneManager();
+manager.register('a', () => new SceneA());
+manager.register('b', () => new SceneB());
+
+console.log('Switching to SceneA...');
+manager.switchScene('a');
+manager.update(16);
+manager.update(16);
+
+console.log('\nSwitching to SceneB (SceneA should be destroyed)...');
+manager.switchScene('b');
+manager.update(16);
+
+console.log('\nAttempting unknown scene...');
+try {
+    manager.switchScene('unknown');
+} catch (e) {
+    console.log(' ', e.message);
+}
+
+console.groupEnd();
+
+// ---------------------------------------------------------------------------
+// Section 4 — Transform unit tests
+// ---------------------------------------------------------------------------
+console.group('4 · Transform unit tests');
+
+// --- Harness ---
+
+let _passed = 0, _failed = 0;
+
+function assert(label, actual, expected, epsilon = 1e-4) {
+    const ok = Math.abs(actual - expected) <= epsilon;
+    if (ok) {
+        console.log(`  %cPASS%c ${label}`, 'color:#4c4', 'color:inherit');
+        _passed++;
+    } else {
+        console.error(`  FAIL ${label}\n       expected ${expected}, got ${actual}`);
+        _failed++;
+    }
+}
+
+function assertVec(label, v, ex, ey, epsilon = 1e-4) {
+    assert(`${label}.x`, v.x, ex, epsilon);
+    assert(`${label}.y`, v.y, ey, epsilon);
+}
+
+// --- Shared hierarchy ---
+//
+//  root        pos(10, 0)   angle=90°   scale(2, 2)
+//  └─ child    pos(5,  0)   angle=45°   scale(1, 0.5)
+//     └─ grand pos(0,  3)   angle=0°    scale(1, 1)
+
+function makeHierarchy() {
+    const r = new SceneNode();
+    r.position.set(10, 0); r.angle = rad(90); r.scale.set(2, 2);
+
+    const c = new SceneNode();
+    c.position.set(5, 0); c.angle = rad(45); c.scale.set(1, 0.5);
+    c.setParent(r);
+
+    const g = new SceneNode();
+    g.position.set(0, 3); g.angle = rad(0); g.scale.set(1, 1);
+    g.setParent(c);
+
+    return { r, c, g };
+}
+
+// ---------------------------------------------------------------------------
+// getWorldPosition
+// ---------------------------------------------------------------------------
+console.groupCollapsed('getWorldPosition');
+{
+    const { r, c, g } = makeHierarchy();
+
+    // root has no parent — world == local
+    assertVec('root world pos', r.getWorldPosition(), 10, 0);
+
+    // child: local(5,0) * scale(2,2) = (10,0), rotate 90° → (0,10), + root(10,0) = (10,10)
+    assertVec('child world pos', c.getWorldPosition(), 10, 10);
+
+    // grandchild: local(0,3) * childWorldScale(2,1) = (0,3),
+    //   rotate by childWorldAngle 135°: x=0·cos135-3·sin135 ≈ -2.1213
+    //                                   y=0·sin135+3·cos135 ≈ -2.1213
+    //   + childWorldPos(10,10) → (~7.8787, ~7.8787)
+    const INV_SQRT2 = Math.SQRT1_2; // √2/2
+    assertVec('grandchild world pos', g.getWorldPosition(),
+        10 - 3 * INV_SQRT2,
+        10 - 3 * INV_SQRT2);
+}
+console.groupEnd();
+
+// ---------------------------------------------------------------------------
+// getWorldAngle
+// ---------------------------------------------------------------------------
+console.groupCollapsed('getWorldAngle');
+{
+    const { r, c, g } = makeHierarchy();
+    assert('root world angle (rad)', r.getWorldAngle(), rad(90));
+    assert('child world angle (rad)', c.getWorldAngle(), rad(135));
+    assert('grandchild world angle (rad)', g.getWorldAngle(), rad(135));
+}
+console.groupEnd();
+
+// ---------------------------------------------------------------------------
+// getWorldScale
+// ---------------------------------------------------------------------------
+console.groupCollapsed('getWorldScale');
+{
+    const { r, c, g } = makeHierarchy();
+    assertVec('root world scale',        r.getWorldScale(), 2, 2);
+    assertVec('child world scale',       c.getWorldScale(), 2, 1);   // (2*1, 2*0.5)
+    assertVec('grandchild world scale',  g.getWorldScale(), 2, 1);   // (2*1, 1*1)
+}
+console.groupEnd();
+
+// ---------------------------------------------------------------------------
+// setWorldPosition round-trip
+// ---------------------------------------------------------------------------
+console.groupCollapsed('setWorldPosition round-trip');
+{
+    const { r, c, g } = makeHierarchy();
+
+    // set child world pos to an arbitrary point and read it back
+    c.setWorldPosition(new Vector(5, 5));
+    assertVec('child after setWorldPosition(5,5)', c.getWorldPosition(), 5, 5);
+
+    // grandchild inherits movement — just verify its world pos is consistent
+    // with the new child position (grandchild local hasn't changed)
+    const gw = g.getWorldPosition();
+    const INV_SQRT2 = Math.SQRT1_2;
+    // childWorldAngle is still 135° after moving only position
+    assertVec('grandchild tracks new child pos',
+        gw,
+        5 - 3 * INV_SQRT2,
+        5 - 3 * INV_SQRT2);
+}
+console.groupEnd();
+
+// ---------------------------------------------------------------------------
+// setWorldPositionX / setWorldPositionY
+// ---------------------------------------------------------------------------
+console.groupCollapsed('setWorldPositionX / setWorldPositionY');
+{
+    const { r, c } = makeHierarchy();
+    const before = c.getWorldPosition();
+
+    c.setWorldPositionX(99);
+    assert('after setWorldPositionX Y unchanged', c.getWorldPosition().y, before.y);
+    assert('after setWorldPositionX X updated',   c.getWorldPosition().x, 99);
+
+    c.setWorldPositionY(77);
+    assert('after setWorldPositionY X unchanged', c.getWorldPosition().x, 99);
+    assert('after setWorldPositionY Y updated',   c.getWorldPosition().y, 77);
+}
+console.groupEnd();
+
+// ---------------------------------------------------------------------------
+// setWorldAngle round-trip
+// ---------------------------------------------------------------------------
+console.groupCollapsed('setWorldAngle round-trip');
+{
+    const { r, c, g } = makeHierarchy();
+
+    c.setWorldAngle(rad(0));
+    assert('child world angle after set 0°', c.getWorldAngle(), rad(0));
+    // local angle should absorb the parent's contribution: 0 - 90° = -90°
+    assert('child local angle recomputed', c.angle, rad(-90));
+
+    // grandchild world angle now follows new child world angle (0°) + its own (0°)
+    assert('grandchild world angle follows parent', g.getWorldAngle(), rad(0));
+}
+console.groupEnd();
+
+// ---------------------------------------------------------------------------
+// setWorldScale / setWorldScaleX / setWorldScaleY round-trip
+// ---------------------------------------------------------------------------
+console.groupCollapsed('setWorldScale / setWorldScaleX / setWorldScaleY');
+{
+    const { r, c } = makeHierarchy();
+
+    c.setWorldScale(new Vector(6, 4));
+    assertVec('child world scale after set (6,4)', c.getWorldScale(), 6, 4);
+    // local = world / parentWorldScale(2,2) = (3, 2)
+    assertVec('child local scale recomputed', c.scale, 3, 2);
+
+    const { c: c2 } = makeHierarchy();
+    c2.setWorldScaleX(8);
+    assert('setWorldScaleX X updated', c2.getWorldScale().x, 8);
+    assert('setWorldScaleX Y unchanged', c2.getWorldScale().y, 1); // original world Y = 2*0.5 = 1
+
+    const { c: c3 } = makeHierarchy();
+    c3.setWorldScaleY(10);
+    assert('setWorldScaleY Y updated', c3.getWorldScale().y, 10);
+    assert('setWorldScaleY X unchanged', c3.getWorldScale().x, 2); // original world X = 2*1 = 2
+}
+console.groupEnd();
+
+// ---------------------------------------------------------------------------
+// setParent keepWorldPosition=true
+// ---------------------------------------------------------------------------
+console.groupCollapsed('setParent keepWorldPosition');
+{
+    // node at world (20, 20), reparented to root — world pos must stay (20,20)
+    const { r } = makeHierarchy();
+
+    const node = new SceneNode();
+    node.position.set(20, 20); // no parent yet, world == local
+
+    node.setParent(r, true);
+    assertVec('world pos preserved after reparent', node.getWorldPosition(), 20, 20);
+
+    // detach back to null with keepWorldPosition=true — local becomes world
+    node.setParent(null, true);
+    assertVec('world pos preserved after detach', node.getWorldPosition(), 20, 20);
+    assertVec('local pos equals world after detach', node.position, 20, 20);
+}
+console.groupEnd();
+
+// ---------------------------------------------------------------------------
+// No-parent node — world == local
+// ---------------------------------------------------------------------------
+console.groupCollapsed('no-parent: world equals local');
+{
+    const n = new SceneNode();
+    n.position.set(7, -3);
+    n.angle = rad(33);
+    n.scale.set(2.5, 0.4);
+
+    assertVec('world pos == local pos', n.getWorldPosition(), 7, -3);
+    assert('world angle == local angle', n.getWorldAngle(), rad(33));
+    assertVec('world scale == local scale', n.getWorldScale(), 2.5, 0.4);
+}
+console.groupEnd();
+
+// --- Summary ---
+const total = _passed + _failed;
+if (_failed === 0) {
+    console.log(`%c✓ All ${total} transform tests passed.`, 'color:#4c4;font-weight:bold');
+} else {
+    console.error(`✗ ${_failed} / ${total} tests FAILED.`);
+}
+
+console.groupEnd();
+
+console.log('\n✓ All demo sections completed.');
+    </script>
+</body>
+</html>
