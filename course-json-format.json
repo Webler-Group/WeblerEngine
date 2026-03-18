@@ -1,0 +1,25 @@
+{
+  "code": "course-code-unique",
+  "title": "Course Title",
+  "description": "Description...",
+  "visible": false,
+  "css": "Optional custom CSS for HTML nodes",
+  "lessons": [
+    {
+      "title": "Lesson Title",
+      "nodes": [
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "Markdown (mode = 1) or HTML (mode = 2) content here",
+          "correctAnswer": "String answer for node type = 4 (Text question)",
+          "answers": [
+            { "text": "Selectable answers for node type = 2 (Singlechoice question) or 3 (Multichoice question)", "correct": true },
+            { "text": "At least 2 and at most 4 answers", "correct": false }
+          ],
+          "codeId": "Linked code ID for node type = 5"
+        }
+      ]
+    }
+  ]
+}
