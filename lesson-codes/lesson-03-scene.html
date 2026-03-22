@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 3 — Scenes & Scene Nodes | Build a 2D Engine</title>
+  <style>
+    :root {
+      --bg: #0f0f1e;
+      --panel: #181828;
+      --border: #2a2a45;
+      --accent: #4cc9f0;
+      --green: #4ade80;
+      --pink: #f72585;
+      --yellow: #fbbf24;
+      --purple: #a78bfa;
+      --orange: #fb923c;
+      --text: #cdd6f4;
+      --muted: #6b7280;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Consolas', 'Courier New', monospace;
+      padding: 24px;
+    }
+
+    header {
+      margin-bottom: 20px;
+    }
+
+    header h1 {
+      color: var(--accent);
+      font-size: 1.3rem;
+      margin-bottom: 4px;
+    }
+
+    header p {
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .tab {
+      padding: 7px 14px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 5px;
+      font-family: inherit;
+      font-size: 0.8rem;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .tab:hover {
+      color: var(--text);
+      border-color: var(--accent);
+    }
+
+    .tab.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: #141428;
+    }
+
+    .demo-area {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    canvas {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #08080f;
+      cursor: crosshair;
+      display: block;
+      width: 100%;
+      max-width: 560px;
+      height: auto;
+    }
+
+    .info {
+      width: 260px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      min-height: 420px;
+    }
+
+    .info h3 {
+      color: var(--accent);
+      font-size: 0.85rem;
+      margin-bottom: 10px;
+    }
+
+    .info p {
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.65;
+      margin-bottom: 10px;
+    }
+
+    .val-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.76rem;
+    }
+
+    .val-row:last-of-type {
+      border-bottom: none;
+    }
+
+    .val-label {
+      color: var(--muted);
+    }
+
+    .val-num {
+      color: var(--green);
+      font-weight: bold;
+    }
+
+    .val-num.purple {
+      color: var(--purple);
+    }
+
+    .val-num.yellow {
+      color: var(--yellow);
+    }
+
+    .val-num.pink {
+      color: var(--pink);
+    }
+
+    .code-block {
+      margin-top: 12px;
+      background: #08080f;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+      padding: 10px 12px;
+      font-size: 0.72rem;
+      color: #a5b4fc;
+      line-height: 1.7;
+      white-space: pre;
+      overflow-x: auto;
+    }
+
+    .tree {
+      margin-top: 10px;
+    }
+
+    .tree-node {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 0 3px 0;
+      font-size: 0.76rem;
+      cursor: pointer;
+      border-radius: 3px;
+      transition: background 0.1s;
+    }
+
+    .tree-node:hover {
+      background: #ffffff08;
+    }
+
+    .tree-node.selected {
+      background: #4cc9f018;
+    }
+
+    .tree-indent {
+      width: 16px;
+      flex-shrink: 0;
+      border-left: 1px solid #ffffff15;
+      margin-left: 8px;
+    }
+
+    .tree-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .tree-name {
+      color: var(--text);
+      flex: 1;
+    }
+
+    .tree-id {
+      color: var(--muted);
+      font-size: 0.7rem;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 6px 12px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      cursor: pointer;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.76rem;
+      margin-top: 8px;
+      margin-right: 4px;
+      transition: border-color 0.15s;
+    }
+
+    .btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .btn.danger:hover {
+      border-color: var(--pink);
+      color: var(--pink);
+    }
+
+    @media (max-width: 740px) {
+      body { padding: 12px; }
+      .demo-area { flex-direction: column; }
+      .info { width: 100%; min-height: auto; }
+      .tab { padding: 6px 10px; font-size: 0.75rem; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>Lesson 3 — Scenes & Scene Nodes</h1>
+    <p>Four interactive demos using the actual engine classes from <code>src/core.js</code>. Touch supported.</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="setDemo(0)">1. Scene Graph</button>
+    <button class="tab" onclick="setDemo(1)">2. Local vs World</button>
+    <button class="tab" onclick="setDemo(2)">3. Reparenting</button>
+    <button class="tab" onclick="setDemo(3)">4. Add / Remove</button>
+  </div>
+
+  <div class="demo-area">
+    <canvas id="canvas" width="560" height="420"></canvas>
+    <div class="info" id="info"></div>
+  </div>
+
+  <script>
+    // ==========================================================================
+    // Vector (from src/utils.js)
+    // ==========================================================================
+    class Vector {
+      constructor(x = 0, y = 0) { this.x = x; this.y = y; }
+      static zero() { return new Vector(0, 0); }
+      static one() { return new Vector(1, 1); }
+      static from(v) { return new Vector(v.x, v.y); }
+      static fromAngle(rad) { return new Vector(Math.cos(rad), Math.sin(rad)); }
+      set(x, y) { this.x = x; this.y = y; return this; }
+      copy(v) { this.x = v.x; this.y = v.y; return this; }
+      clone() { return new Vector(this.x, this.y); }
+      add(v) { this.x += v.x; this.y += v.y; return this; }
+      sub(v) { this.x -= v.x; this.y -= v.y; return this; }
+      mul(v) { this.x *= v.x; this.y *= v.y; return this; }
+      div(v) { this.x /= v.x; this.y /= v.y; return this; }
+      scale(s) { this.x *= s; this.y *= s; return this; }
+      negate() { this.x = -this.x; this.y = -this.y; return this; }
+      normalize() { const l = this.length(); if (l > 0) { this.x /= l; this.y /= l; } return this; }
+      rotate(rad) {
+        const c = Math.cos(rad), s = Math.sin(rad);
+        const nx = this.x * c - this.y * s;
+        this.y = this.x * s + this.y * c;
+        this.x = nx; return this;
+      }
+      lerp(v, t) { this.x += (v.x - this.x) * t; this.y += (v.y - this.y) * t; return this; }
+      length() { return Math.sqrt(this.x * this.x + this.y * this.y); }
+      lengthSq() { return this.x * this.x + this.y * this.y; }
+      dot(v) { return this.x * v.x + this.y * v.y; }
+      cross(v) { return this.x * v.y - this.y * v.x; }
+      distance(v) { const dx = this.x - v.x, dy = this.y - v.y; return Math.sqrt(dx * dx + dy * dy); }
+      distanceSq(v) { const dx = this.x - v.x, dy = this.y - v.y; return dx * dx + dy * dy; }
+      angle() { return Math.atan2(this.y, this.x); }
+      equals(v, e = 0) { return Math.abs(this.x - v.x) <= e && Math.abs(this.y - v.y) <= e; }
+      toString() { return `Vector(${this.x.toFixed(2)}, ${this.y.toFixed(2)})`; }
+    }
+
+    // ==========================================================================
+    // SceneNode (from src/core.js)
+    // ==========================================================================
+    class SceneNode {
+      static _nextId = 0;
+      constructor() {
+        this.id = SceneNode._nextId++;
+        this.name = `node_${this.id}`;
+        this.scene = null;
+        this.position = Vector.zero();
+        this.angle = 0;
+        this.scale = Vector.one();
+        this.parent = null;
+      }
+      setParent(node, keepWorldPosition = false) {
+        if (keepWorldPosition) {
+          const wp = this.getWorldPosition();
+          const wa = this.getWorldAngle();
+          const ws = this.getWorldScale();
+          this.parent = node;
+          this.setWorldPosition(wp);
+          this.setWorldAngle(wa);
+          this.setWorldScale(ws);
+        } else {
+          this.parent = node;
+        }
+      }
+      getWorldPosition() {
+        if (!this.parent) return this.position.clone();
+        const p = this.parent.getWorldPosition();
+        const pa = this.parent.getWorldAngle();
+        const ps = this.parent.getWorldScale();
+        return p.add(this.position.clone().mul(ps).rotate(pa));
+      }
+      setWorldPosition(w) {
+        if (!this.parent) { this.position.set(w.x, w.y); return; }
+        const p = this.parent.getWorldPosition();
+        const pa = this.parent.getWorldAngle();
+        const ps = this.parent.getWorldScale();
+        this.position.copy(w.sub(p).rotate(-pa).div(ps));
+      }
+      getWorldAngle() {
+        if (!this.parent) return this.angle;
+        return this.parent.getWorldAngle() + this.angle;
+      }
+      setWorldAngle(wa) {
+        this.angle = this.parent ? wa - this.parent.getWorldAngle() : wa;
+      }
+      getWorldScale() {
+        if (!this.parent) return this.scale.clone();
+        return this.parent.getWorldScale().mul(this.scale);
+      }
+      setWorldScale(ws) {
+        this.scale.copy(this.parent ? ws.clone().div(this.parent.getWorldScale()) : ws.clone());
+      }
+      start() { }
+      update(dt) { }
+      destroy() { }
+    }
+
+    // ==========================================================================
+    // Scene (from src/core.js)
+    // ==========================================================================
+    class Scene {
+      constructor() {
+        this.nodes = [];
+        this.pending = [];
+        this.pendingRemoval = [];
+        this.running = false;
+      }
+      addNode(node) {
+        node.scene = this;
+        if (this.running) { this.pending.push(node); }
+        else { this.nodes.push(node); node.start(); }
+      }
+      removeNode(node) {
+        const pi = this.pending.indexOf(node);
+        if (pi !== -1) { this.pending.splice(pi, 1); node.destroy(); node.scene = null; return; }
+        if (this.running) { this.pendingRemoval.push(node); }
+        else {
+          const i = this.nodes.indexOf(node);
+          if (i !== -1) { this.nodes.splice(i, 1); node.destroy(); node.scene = null; }
+        }
+      }
+      findNode(name) { return this.nodes.find(n => n.name === name) ?? null; }
+      start() { this.running = true; }
+      update(dt) {
+        if (this.pendingRemoval.length > 0) {
+          for (const n of this.pendingRemoval) {
+            const i = this.nodes.indexOf(n);
+            if (i !== -1) this.nodes.splice(i, 1);
+            n.destroy(); n.scene = null;
+          }
+          this.pendingRemoval = [];
+        }
+        if (this.pending.length > 0) {
+          for (const n of this.pending) { this.nodes.push(n); n.start(); }
+          this.pending = [];
+        }
+        for (const n of this.nodes) n.update(dt);
+      }
+      destroy() { this.running = false; }
+    }
+
+    // ==========================================================================
+    // SceneManager (from src/core.js)
+    // ==========================================================================
+    class SceneManager {
+      constructor() {
+        this.registry = new Map();
+        this.currentScene = null;
+      }
+      register(name, init) { this.registry.set(name, init); }
+      update(dt) { if (this.currentScene) this.currentScene.update(dt); }
+      switchScene(name, params = {}) {
+        const init = this.registry.get(name);
+        if (!init) throw new Error(`SceneManager: Unknown scene "${name}"`);
+        if (this.currentScene) this.currentScene.destroy();
+        const scene = new Scene();
+        init(scene, params);
+        scene.start();
+        this.currentScene = scene;
+      }
+    }
+
+    // ==========================================================================
+    // Canvas setup
+    // ==========================================================================
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const mouse = new Vector(W / 2, H / 2);
+
+    function getCanvasPoint(clientX, clientY) {
+      const r = canvas.getBoundingClientRect();
+      return new Vector(
+        (clientX - r.left) * (canvas.width / r.width),
+        (clientY - r.top)  * (canvas.height / r.height)
+      );
+    }
+    canvas.addEventListener('mousemove', e => {
+      mouse.copy(getCanvasPoint(e.clientX, e.clientY));
+    });
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      mouse.copy(getCanvasPoint(e.touches[0].clientX, e.touches[0].clientY));
+    }, { passive: false });
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      mouse.copy(getCanvasPoint(e.touches[0].clientX, e.touches[0].clientY));
+    }, { passive: false });
+
+    function n2(v) { return typeof v === 'number' ? v.toFixed(2) : v; }
+    function n1(v) { return typeof v === 'number' ? v.toFixed(1) : v; }
+    function deg(r) { return (r * 180 / Math.PI).toFixed(1) + '°'; }
+
+    function drawGrid() {
+      ctx.save();
+      ctx.strokeStyle = '#ffffff06'; ctx.lineWidth = 1;
+      for (let x = 0; x <= W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+      for (let y = 0; y <= H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+      ctx.restore();
+    }
+
+    // Draw a local-axis cross at a world position + angle
+    function drawAxes(worldPos, worldAngle, size, alpha = 0.5) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      const right = Vector.fromAngle(worldAngle).scale(size);
+      const down = Vector.fromAngle(worldAngle + Math.PI / 2).scale(size);
+      ctx.strokeStyle = '#f72585'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(worldPos.x, worldPos.y); ctx.lineTo(worldPos.x + right.x, worldPos.y + right.y); ctx.stroke();
+      ctx.strokeStyle = '#4ade80';
+      ctx.beginPath(); ctx.moveTo(worldPos.x, worldPos.y); ctx.lineTo(worldPos.x + down.x, worldPos.y + down.y); ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // Draw a filled diamond shape representing a scene node
+    function drawNode(worldPos, worldAngle, worldScale, color, label, size = 10) {
+      ctx.save();
+      ctx.translate(worldPos.x, worldPos.y);
+      ctx.rotate(worldAngle);
+      ctx.scale(worldScale.x, worldScale.y);
+      ctx.beginPath();
+      ctx.moveTo(0, -size);
+      ctx.lineTo(size * 0.7, 0);
+      ctx.lineTo(0, size);
+      ctx.lineTo(-size * 0.7, 0);
+      ctx.closePath();
+      ctx.fillStyle = color + '40';
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+      if (label) {
+        ctx.save();
+        ctx.font = '10px Consolas, monospace';
+        ctx.fillStyle = color;
+        ctx.fillText(label, worldPos.x + size + 4, worldPos.y + 4);
+        ctx.restore();
+      }
+    }
+
+    // Draw a line between two world positions
+    function drawConnection(a, b, color = '#ffffff15') {
+      ctx.save();
+      ctx.strokeStyle = color; ctx.lineWidth = 1;
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // ==========================================================================
+    // DEMO 0 — Scene Graph Hierarchy
+    // Ship → Turret → Barrel  +  Ship → EngineL / EngineR
+    // Mouse controls the ship's rotation (it slowly tracks the cursor)
+    // ==========================================================================
+    function buildHierarchy0() {
+      const ship = new SceneNode(); ship.name = 'Ship';
+      const turret = new SceneNode(); turret.name = 'Turret';
+      const barrel = new SceneNode(); barrel.name = 'Barrel';
+      const engineL = new SceneNode(); engineL.name = 'EngineL';
+      const engineR = new SceneNode(); engineR.name = 'EngineR';
+
+      ship.position.set(W / 2, H / 2);
+      turret.position.set(0, -28);
+      barrel.position.set(0, -22);
+      engineL.position.set(-26, 18);
+      engineR.position.set(26, 18);
+
+      turret.setParent(ship);
+      barrel.setParent(turret);
+      engineL.setParent(ship);
+      engineR.setParent(ship);
+
+      return { ship, turret, barrel, engineL, engineR };
+    }
+
+    const h0 = buildHierarchy0();
+    let turretLocalAngle0 = 0;
+
+    function renderNode0(node, color, size = 10) {
+      const wp = node.getWorldPosition();
+      const wa = node.getWorldAngle();
+      const ws = node.getWorldScale();
+      drawNode(wp, wa, ws, color, node.name, size);
+      drawAxes(wp, wa, size * 1.4, 0.4);
+      if (node.parent) drawConnection(node.parent.getWorldPosition(), wp);
+    }
+
+    function updateDemo0(dt) {
+      // Ship tracks mouse smoothly
+      const toMouse = mouse.clone().sub(h0.ship.position);
+      if (toMouse.length() > 5) {
+        const target = toMouse.angle();
+        const da = target - h0.ship.angle;
+        // Wrap angle delta to [-π, π]
+        const wrapped = ((da + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        h0.ship.angle += wrapped * (1 - Math.pow(1 - 0.04, dt * 60));
+      }
+      // Turret independently oscillates
+      turretLocalAngle0 += dt * 1.08;  // 1.08 rad/s
+      h0.turret.angle = Math.sin(turretLocalAngle0) * 0.6;
+
+      drawGrid();
+
+      // Draw parent-child lines, then nodes
+      renderNode0(h0.engineL, '#fb923c', 8);
+      renderNode0(h0.engineR, '#fb923c', 8);
+      renderNode0(h0.ship, '#4cc9f0', 14);
+      renderNode0(h0.turret, '#a78bfa', 11);
+      renderNode0(h0.barrel, '#f72585', 8);
+
+      const nodes = [h0.ship, h0.turret, h0.barrel, h0.engineL, h0.engineR];
+      const colors = ['#4cc9f0', '#a78bfa', '#f72585', '#fb923c', '#fb923c'];
+
+      document.getElementById('info').innerHTML = `
+        <h3>Scene Graph Hierarchy</h3>
+        <p>The ship faces your mouse. All children rotate with it. The turret also oscillates independently — that is its <b>local</b> angle.</p>
+        <div class="tree">
+          <div class="tree-node"><div class="tree-dot" style="background:#4cc9f0"></div><span class="tree-name">Ship</span><span class="tree-id">#${h0.ship.id}</span></div>
+          <div style="padding-left:8px">
+            <div class="tree-node"><div class="tree-indent"></div><div class="tree-dot" style="background:#a78bfa"></div><span class="tree-name">Turret</span><span class="tree-id">#${h0.turret.id}</span></div>
+            <div style="padding-left:16px">
+              <div class="tree-node"><div class="tree-indent"></div><div class="tree-dot" style="background:#f72585"></div><span class="tree-name">Barrel</span><span class="tree-id">#${h0.barrel.id}</span></div>
+            </div>
+            <div class="tree-node"><div class="tree-indent"></div><div class="tree-dot" style="background:#fb923c"></div><span class="tree-name">EngineL</span><span class="tree-id">#${h0.engineL.id}</span></div>
+            <div class="tree-node"><div class="tree-indent"></div><div class="tree-dot" style="background:#fb923c"></div><span class="tree-name">EngineR</span><span class="tree-id">#${h0.engineR.id}</span></div>
+          </div>
+        </div>
+        <div class="code-block">turret.setParent(ship);
+barrel.setParent(turret);
+engineL.setParent(ship);
+
+// When ship rotates, ALL
+// children follow automatically.</div>`;
+    }
+
+    // ==========================================================================
+    // DEMO 1 — Local vs World Space
+    // Click a node to select it and see its local vs world transforms
+    // ==========================================================================
+    const h1 = buildHierarchy0();
+    let selectedNode1 = h1.turret;
+    let turretLocalAngle1 = 0;
+    let shipAngle1 = 0;
+
+    // Node hit test (simple distance check in world space)
+    function findNodeAtMouse(nodes) {
+      for (const n of nodes) {
+        if (n.getWorldPosition().distance(mouse) < 18) return n;
+      }
+      return null;
+    }
+
+    const h1nodes = [h1.ship, h1.turret, h1.barrel, h1.engineL, h1.engineR];
+    const h1colors = { Ship: '#4cc9f0', Turret: '#a78bfa', Barrel: '#f72585', EngineL: '#fb923c', EngineR: '#fb923c' };
+
+    function selectNodeAtMouse() {
+      if (currentDemo !== 1) return;
+      const hit = findNodeAtMouse(h1nodes);
+      if (hit) selectedNode1 = hit;
+    }
+    canvas.addEventListener('click', selectNodeAtMouse);
+    canvas.addEventListener('touchend', e => {
+      e.preventDefault();
+      selectNodeAtMouse();
+    }, { passive: false });
+
+    function updateDemo1(dt) {
+      shipAngle1 += dt * 0.42;  // slow automatic rotation so nodes stay predictable
+      h1.ship.angle = Math.sin(shipAngle1) * 0.9;
+      turretLocalAngle1 += dt * 1.08;  // 1.08 rad/s
+      h1.turret.angle = Math.sin(turretLocalAngle1) * 0.6;
+
+      drawGrid();
+
+      for (const n of h1nodes) {
+        const wp = n.getWorldPosition();
+        const wa = n.getWorldAngle();
+        const ws = n.getWorldScale();
+        const color = h1colors[n.name];
+        const isSelected = n === selectedNode1;
+        if (n.parent) drawConnection(n.parent.getWorldPosition(), wp);
+        drawNode(wp, wa, ws, color, n.name, n === h1.ship ? 14 : 9);
+        drawAxes(wp, wa, isSelected ? 22 : 14, isSelected ? 0.8 : 0.3);
+      }
+
+      // Highlight selected
+      if (selectedNode1) {
+        const wp = selectedNode1.getWorldPosition();
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(wp.x, wp.y, 22, 0, Math.PI * 2);
+        ctx.strokeStyle = h1colors[selectedNode1.name] + '60';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      const s = selectedNode1;
+      const wp = s.getWorldPosition();
+      const wa = s.getWorldAngle();
+      const ws = s.getWorldScale();
+
+      document.getElementById('info').innerHTML = `
+        <h3>Local vs World Space</h3>
+        <p><b>Click any node</b> to inspect it. The ship rotates automatically. Local is relative to parent; world is absolute canvas coordinates.</p>
+        <div style="font-size:0.76rem;color:${h1colors[s.name]};margin-bottom:8px">Selected: <b>${s.name}</b> #${s.id}</div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">LOCAL (relative to parent)</div>
+        <div class="val-row"><span class="val-label">position.x</span><span class="val-num">${n2(s.position.x)}</span></div>
+        <div class="val-row"><span class="val-label">position.y</span><span class="val-num">${n2(s.position.y)}</span></div>
+        <div class="val-row"><span class="val-label">angle</span><span class="val-num">${n2(s.angle)} rad</span></div>
+        <div style="font-size:0.72rem;color:var(--muted);margin:8px 0 4px">WORLD (canvas coordinates)</div>
+        <div class="val-row"><span class="val-label">worldPos.x</span><span class="val-num purple">${n2(wp.x)}</span></div>
+        <div class="val-row"><span class="val-label">worldPos.y</span><span class="val-num purple">${n2(wp.y)}</span></div>
+        <div class="val-row"><span class="val-label">worldAngle</span><span class="val-num purple">${n2(wa)} rad</span></div>
+        <div class="code-block">// Local stays constant:
+node.position  // relative to parent
+
+// World recalculates every call:
+node.getWorldPosition()
+node.getWorldAngle()</div>`;
+    }
+
+    // ==========================================================================
+    // DEMO 2 — Reparenting  (keepWorldPosition = true vs false)
+    // ==========================================================================
+    function buildReparentScene() {
+      const shipA = new SceneNode(); shipA.name = 'ShipA';
+      const shipB = new SceneNode(); shipB.name = 'ShipB';
+      const cargo = new SceneNode(); cargo.name = 'Cargo';
+
+      shipA.position.set(W * 0.28, H * 0.5);
+      shipB.position.set(W * 0.72, H * 0.5);
+      cargo.position.set(0, -30);   // local: 30px above ShipA
+      cargo.setParent(shipA);
+
+      return { shipA, shipB, cargo };
+    }
+
+    let r2 = buildReparentScene();
+    let r2t = 0;
+    let r2keepWorld = false;
+
+    document.addEventListener('click', () => { }); // placeholder
+
+    function reparentToB(keepWorld) {
+      r2keepWorld = keepWorld;
+      r2.cargo.setParent(r2.shipB, keepWorld);
+    }
+
+    function resetReparent() {
+      r2 = buildReparentScene();
+    }
+
+    function updateDemo2(dt) {
+      r2t += dt * 0.72;  // 0.72 rad/s
+      r2.shipA.angle = Math.sin(r2t * 0.7) * 0.5;
+      r2.shipB.angle = Math.sin(r2t * 0.5 + 1) * 0.5;
+
+      drawGrid();
+
+      const nShipA = r2.shipA;
+      const nShipB = r2.shipB;
+      const nCargo = r2.cargo;
+
+      const posA = nShipA.getWorldPosition();
+      const posB = nShipB.getWorldPosition();
+      const posC = nCargo.getWorldPosition();
+
+      if (nCargo.parent) drawConnection(nCargo.parent.getWorldPosition(), posC, '#fbbf2440');
+
+      drawNode(posA, nShipA.getWorldAngle(), nShipA.getWorldScale(), '#4cc9f0', 'ShipA', 16);
+      drawAxes(posA, nShipA.getWorldAngle(), 20, 0.5);
+      drawNode(posB, nShipB.getWorldAngle(), nShipB.getWorldScale(), '#4ade80', 'ShipB', 16);
+      drawAxes(posB, nShipB.getWorldAngle(), 20, 0.5);
+      drawNode(posC, nCargo.getWorldAngle(), nCargo.getWorldScale(), '#fbbf24', 'Cargo', 11);
+      drawAxes(posC, nCargo.getWorldAngle(), 16, 0.6);
+
+      // Label parent
+      const parentName = nCargo.parent ? nCargo.parent.name : 'none';
+      const parentColor = parentName === 'ShipA' ? '#4cc9f0' : parentName === 'ShipB' ? '#4ade80' : '#888';
+
+      document.getElementById('info').innerHTML = `
+        <h3>Reparenting</h3>
+        <p>Cargo orbits <b>ShipA</b>. Use the buttons to reparent it to <b>ShipB</b> with or without keeping its world position.</p>
+        <div class="val-row"><span class="val-label">cargo parent</span><span class="val-num" style="color:${parentColor}">${parentName}</span></div>
+        <div class="val-row"><span class="val-label">cargo local.x</span><span class="val-num">${n2(nCargo.position.x)}</span></div>
+        <div class="val-row"><span class="val-label">cargo local.y</span><span class="val-num">${n2(nCargo.position.y)}</span></div>
+        <div class="val-row"><span class="val-label">cargo world.x</span><span class="val-num purple">${n2(posC.x)}</span></div>
+        <div class="val-row"><span class="val-label">cargo world.y</span><span class="val-num purple">${n2(posC.y)}</span></div>
+        <div>
+          <button class="btn" onclick="reparentToB(false)">→ ShipB (snap)</button>
+          <button class="btn" onclick="reparentToB(true)">→ ShipB (keep world)</button>
+          <button class="btn danger" onclick="resetReparent()">Reset</button>
+        </div>
+        <div class="code-block">// Teleports to ShipB's local space:
+cargo.setParent(shipB);
+
+// Stays at same world pos:
+cargo.setParent(shipB, true);</div>`;
+    }
+
+    // ==========================================================================
+    // DEMO 3 — Add / Remove nodes via a real Scene
+    // ==========================================================================
+    class BubbleNode extends SceneNode {
+      constructor(pos, color) {
+        super();
+        this.position.copy(pos);
+        this.name = 'bubble';
+        this._color = color;
+        this._vel = Vector.fromAngle(Math.random() * Math.PI * 2).scale((0.6 + Math.random() * 0.8) * 60);  // px/s
+        this._life = 3.0 + Math.random() * 2;
+        this._maxLife = this._life;
+        this._r = 8 + Math.random() * 12;
+      }
+      update(dt) {
+        this.position.add(this._vel.clone().scale(dt));
+        this._life -= dt;
+        if (this._life <= 0) this.scene.removeNode(this);
+      }
+    }
+
+    const COLORS3 = ['#4cc9f0', '#4ade80', '#f72585', '#a78bfa', '#fbbf24', '#fb923c'];
+
+    // spawnBubble adds a node to the active scene.
+    // Pass an explicit scene during init (before switchScene returns),
+    // or omit it to use sm3.currentScene from click/tap handlers.
+    function spawnBubble(pos, scene) {
+      const color = COLORS3[Math.floor(Math.random() * COLORS3.length)];
+      const target = scene ?? sm3.currentScene;
+      target.addNode(new BubbleNode(pos ?? new Vector(Math.random() * W, Math.random() * H), color));
+    }
+
+    const sm3 = new SceneManager();
+    sm3.register('bubbles', (scene) => {
+      // Populate the scene with initial nodes via the init function —
+      // never extend Scene or call new Scene() directly.
+      for (let i = 0; i < 8; i++) spawnBubble(null, scene);
+    });
+    sm3.switchScene('bubbles');
+
+    // Click / tap to spawn
+    canvas.addEventListener('click', e => {
+      if (currentDemo !== 3) return;
+      spawnBubble(getCanvasPoint(e.clientX, e.clientY));
+    });
+    canvas.addEventListener('touchend', e => {
+      if (currentDemo !== 3) return;
+      spawnBubble(mouse.clone());
+    });
+
+    function updateDemo3(dt) {
+      sm3.update(dt);
+
+      drawGrid();
+
+      // Draw bubbles
+      for (const node of sm3.currentScene.nodes) {
+        if (!(node instanceof BubbleNode)) continue;
+        const wp = node.getWorldPosition();
+        const alpha = Math.max(0, node._life / node._maxLife);
+        const radius = node._r;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.arc(wp.x, wp.y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = node._color + '30';
+        ctx.fill();
+        ctx.strokeStyle = node._color;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        // Life bar
+        ctx.fillStyle = node._color + '80';
+        ctx.fillRect(wp.x - radius, wp.y + radius + 3, radius * 2 * alpha, 2);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
+      // Instruction overlay
+      ctx.save();
+      ctx.font = '11px Consolas, monospace';
+      ctx.fillStyle = '#ffffff20';
+      ctx.fillText('click canvas to spawn a bubble', 12, H - 12);
+      ctx.restore();
+
+      const s3 = sm3.currentScene;
+
+      document.getElementById('info').innerHTML = `
+        <h3>Add / Remove Nodes</h3>
+        <p>Click the canvas to add bubbles. Each removes itself after a few seconds by calling <code>scene.removeNode(this)</code>.</p>
+        <div class="val-row"><span class="val-label">scene.nodes.length</span><span class="val-num">${s3.nodes.length}</span></div>
+        <div class="val-row"><span class="val-label">pending</span><span class="val-num yellow">${s3.pending.length}</span></div>
+        <div class="val-row"><span class="val-label">pendingRemoval</span><span class="val-num pink">${s3.pendingRemoval.length}</span></div>
+        <button class="btn" onclick="spawnBubble()">Spawn random</button>
+        <div class="code-block">// Inside BubbleNode.update(dt):
+this._life -= dt;
+if (this._life <= 0) {
+  this.scene.removeNode(this);
+  // Deferred to next tick —
+  // safe mid-iteration.
+}
+
+// From outside (e.g. on click):
+sm.currentScene.addNode(new BubbleNode(...));</div>`;
+    }
+
+    // ==========================================================================
+    // Main loop
+    // ==========================================================================
+    const demos = [updateDemo0, updateDemo1, updateDemo2, updateDemo3];
+    let currentDemo = 0;
+
+    function setDemo(i) {
+      currentDemo = i;
+      document.querySelectorAll('.tab').forEach((t, idx) => t.classList.toggle('active', idx === i));
+    }
+
+    let lastTime = 0;
+    function loop(timestamp) {
+      const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+      lastTime = timestamp;
+      ctx.clearRect(0, 0, W, H);
+      demos[currentDemo](dt);
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+  </script>
+
+</body>
+
+</html>

@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 2 — Vectors: Direction & Angles | Build a 2D Engine</title>
+  <style>
+    :root {
+      --bg: #0f0f1e;
+      --panel: #181828;
+      --border: #2a2a45;
+      --accent: #4cc9f0;
+      --green: #4ade80;
+      --pink: #f72585;
+      --yellow: #fbbf24;
+      --purple: #a78bfa;
+      --text: #cdd6f4;
+      --muted: #6b7280;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Consolas', 'Courier New', monospace;
+      padding: 24px;
+    }
+
+    header { margin-bottom: 20px; }
+    header h1 { color: var(--accent); font-size: 1.3rem; margin-bottom: 4px; }
+    header p  { color: var(--muted); font-size: 0.82rem; }
+
+    .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+    .tab {
+      padding: 7px 14px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 5px;
+      font-family: inherit;
+      font-size: 0.8rem;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .tab:hover  { color: var(--text); border-color: var(--accent); }
+    .tab.active { color: var(--accent); border-color: var(--accent); background: #141428; }
+
+    .demo-area { display: flex; gap: 14px; align-items: flex-start; }
+    canvas {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #08080f;
+      cursor: crosshair;
+      display: block;
+      width: 100%;
+      max-width: 560px;
+      height: auto;
+    }
+
+    .info {
+      width: 260px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      min-height: 420px;
+    }
+    .info h3 { color: var(--accent); font-size: 0.85rem; margin-bottom: 10px; }
+    .info p  { color: var(--muted); font-size: 0.78rem; line-height: 1.65; margin-bottom: 12px; }
+
+    .val-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.78rem;
+    }
+    .val-row:last-of-type { border-bottom: none; }
+    .val-label { color: var(--muted); }
+    .val-num   { color: var(--green); font-weight: bold; }
+    .val-num.danger { color: var(--pink); }
+    .val-num.warn   { color: var(--yellow); }
+    .val-num.purple { color: var(--purple); }
+
+    .code-block {
+      margin-top: 14px;
+      background: #08080f;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+      padding: 10px 12px;
+      font-size: 0.73rem;
+      color: #a5b4fc;
+      line-height: 1.7;
+      white-space: pre;
+      overflow-x: auto;
+    }
+
+    .legend { margin-top: 12px; }
+    .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--muted); margin-bottom: 5px; }
+    .dot { width: 14px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+
+    .slider-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 0.78rem; }
+    .slider-row label { color: var(--muted); flex-shrink: 0; }
+    input[type=range] { flex: 1; accent-color: var(--accent); }
+    .slider-val { color: var(--green); width: 44px; text-align: right; }
+
+    @media (max-width: 740px) {
+      body { padding: 12px; }
+      .demo-area { flex-direction: column; }
+      .info { width: 100%; min-height: auto; }
+      .tab { padding: 6px 10px; font-size: 0.75rem; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>Lesson 2 — Vectors: Direction & Angles</h1>
+    <p>Four demos. Move your mouse or finger over the canvas to interact.</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="setDemo(0)">1. Unit Circle</button>
+    <button class="tab"        onclick="setDemo(1)">2. Dot Product</button>
+    <button class="tab"        onclick="setDemo(2)">3. Lerp Compare</button>
+    <button class="tab"        onclick="setDemo(3)">4. Rotate & Angle</button>
+  </div>
+
+  <div class="demo-area">
+    <canvas id="canvas" width="560" height="420"></canvas>
+    <div class="info" id="info"></div>
+  </div>
+
+  <script>
+    // =============================================================================
+    // Vector class (from src/utils.js)
+    // =============================================================================
+    class Vector {
+      constructor(x = 0, y = 0) { this.x = x; this.y = y; }
+      static zero()         { return new Vector(0, 0); }
+      static one()          { return new Vector(1, 1); }
+      static from(v)        { return new Vector(v.x, v.y); }
+      static fromAngle(rad) { return new Vector(Math.cos(rad), Math.sin(rad)); }
+      set(x, y)   { this.x = x; this.y = y; return this; }
+      copy(v)     { this.x = v.x; this.y = v.y; return this; }
+      clone()     { return new Vector(this.x, this.y); }
+      add(v)      { this.x += v.x; this.y += v.y; return this; }
+      sub(v)      { this.x -= v.x; this.y -= v.y; return this; }
+      mul(v)      { this.x *= v.x; this.y *= v.y; return this; }
+      scale(s)    { this.x *= s;   this.y *= s;   return this; }
+      negate()    { this.x = -this.x; this.y = -this.y; return this; }
+      normalize() { const l = this.length(); if (l > 0) { this.x /= l; this.y /= l; } return this; }
+      rotate(rad) {
+        const c = Math.cos(rad), s = Math.sin(rad);
+        const nx = this.x * c - this.y * s;
+        this.y    = this.x * s + this.y * c;
+        this.x    = nx;
+        return this;
+      }
+      lerp(v, t)     { this.x += (v.x - this.x) * t; this.y += (v.y - this.y) * t; return this; }
+      length()       { return Math.sqrt(this.x * this.x + this.y * this.y); }
+      lengthSq()     { return this.x * this.x + this.y * this.y; }
+      dot(v)         { return this.x * v.x + this.y * v.y; }
+      cross(v)       { return this.x * v.y - this.y * v.x; }
+      distance(v)    { const dx = this.x - v.x, dy = this.y - v.y; return Math.sqrt(dx * dx + dy * dy); }
+      distanceSq(v)  { const dx = this.x - v.x, dy = this.y - v.y; return dx * dx + dy * dy; }
+      angle()        { return Math.atan2(this.y, this.x); }
+      equals(v, e=0) { return Math.abs(this.x - v.x) <= e && Math.abs(this.y - v.y) <= e; }
+      toString()     { return `Vector(${this.x.toFixed(2)}, ${this.y.toFixed(2)})`; }
+    }
+
+    // =============================================================================
+    // Canvas setup
+    // =============================================================================
+    const canvas = document.getElementById('canvas');
+    const ctx    = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const mouse = new Vector(W * 0.7, H * 0.4);
+
+    function getCanvasPoint(clientX, clientY) {
+      const r = canvas.getBoundingClientRect();
+      return new Vector(
+        (clientX - r.left) * (canvas.width / r.width),
+        (clientY - r.top)  * (canvas.height / r.height)
+      );
+    }
+    canvas.addEventListener('mousemove', e => {
+      mouse.copy(getCanvasPoint(e.clientX, e.clientY));
+    });
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      mouse.copy(getCanvasPoint(e.touches[0].clientX, e.touches[0].clientY));
+    }, { passive: false });
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      mouse.copy(getCanvasPoint(e.touches[0].clientX, e.touches[0].clientY));
+    }, { passive: false });
+
+    function n2(v) { return v.toFixed(2); }
+    function n1(v) { return v.toFixed(1); }
+    function deg(r) { return (r * 180 / Math.PI).toFixed(1); }
+
+    function drawArrow(from, to, color, width = 1.5, label = '') {
+      const dx = to.x - from.x, dy = to.y - from.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 2) return;
+      const ux = dx / len, uy = dy / len;
+      const al = Math.min(12, len * 0.35), aw = al * 0.45;
+      ctx.save();
+      ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width;
+      ctx.beginPath(); ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x - ux * al, to.y - uy * al); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(to.x, to.y);
+      ctx.lineTo(to.x - ux * al - uy * aw, to.y - uy * al + ux * aw);
+      ctx.lineTo(to.x - ux * al + uy * aw, to.y - uy * al - ux * aw);
+      ctx.closePath(); ctx.fill();
+      if (label) {
+        ctx.font = '11px Consolas, monospace';
+        ctx.globalAlpha = 0.85;
+        ctx.fillText(label, to.x + ux * 6 + 4, to.y + uy * 6 + 4);
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+    }
+
+    function drawCircle(pos, r, color, label = '', filled = false) {
+      ctx.save();
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = filled ? color : color + '22';
+      ctx.fill();
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+      if (label) {
+        ctx.font = '11px Consolas, monospace';
+        ctx.fillStyle = color;
+        ctx.fillText(label, pos.x + r + 5, pos.y + 4);
+      }
+      ctx.restore();
+    }
+
+    function drawGrid() {
+      ctx.save();
+      ctx.strokeStyle = '#ffffff07'; ctx.lineWidth = 1;
+      for (let x = 0; x <= W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+      for (let y = 0; y <= H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+      ctx.restore();
+    }
+
+    // =============================================================================
+    // DEMO 0 — Unit Circle & Normalization
+    // =============================================================================
+    const CENTER0 = new Vector(W / 2, H / 2);
+    const UNIT_R  = 110;
+
+    function updateDemo0(dt) {
+      drawGrid();
+
+      const raw  = mouse.clone().sub(CENTER0);
+      const len  = raw.length();
+      const norm = len > 0 ? raw.clone().normalize() : new Vector(1, 0);
+
+      // Unit circle
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(CENTER0.x, CENTER0.y, UNIT_R, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffffff15'; ctx.lineWidth = 1; ctx.stroke();
+      // Axis lines
+      ctx.strokeStyle = '#ffffff10';
+      ctx.beginPath(); ctx.moveTo(CENTER0.x - 180, CENTER0.y); ctx.lineTo(CENTER0.x + 180, CENTER0.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(CENTER0.x, CENTER0.y - 180); ctx.lineTo(CENTER0.x, CENTER0.y + 180); ctx.stroke();
+      ctx.restore();
+
+      // Raw vector (mouse)
+      drawArrow(CENTER0, mouse, '#ffffff20', 1.5, '');
+      ctx.save();
+      ctx.font = '10px Consolas, monospace';
+      ctx.fillStyle = '#ffffff25';
+      ctx.fillText('raw vector', (CENTER0.x + mouse.x) / 2 + 6, (CENTER0.y + mouse.y) / 2 - 4);
+      ctx.restore();
+
+      // Normalized vector — always ends on unit circle
+      const normEnd = CENTER0.clone().add(norm.clone().scale(UNIT_R));
+      drawArrow(CENTER0, normEnd, '#4cc9f0', 2.5, 'normalize()');
+
+      // Dot on unit circle
+      drawCircle(normEnd, 5, '#4cc9f0', '', true);
+
+      // Center
+      drawCircle(CENTER0, 6, '#f72585', '', true);
+
+      // Length indicator arc
+      if (len > 0) {
+        const angle = norm.angle();
+        ctx.save();
+        ctx.strokeStyle = '#4ade8060';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(CENTER0.x, CENTER0.y, len, 0, angle, angle < 0);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Length label at midpoint of raw vector
+      ctx.save();
+      ctx.font = '10px Consolas, monospace';
+      ctx.fillStyle = '#4ade80aa';
+      const mid = CENTER0.clone().add(raw.clone().scale(0.5));
+      ctx.fillText(`len=${n1(len)}`, mid.x + 6, mid.y - 4);
+      ctx.restore();
+
+      document.getElementById('info').innerHTML = `
+        <h3>Unit Circle & Normalization</h3>
+        <p>Move your mouse. The <span style="color:var(--accent)">cyan arrow</span> always points in the same direction but has length = 1 — it lives on the <b>unit circle</b>.</p>
+        <div class="val-row"><span class="val-label">raw.x</span><span class="val-num">${n2(raw.x)}</span></div>
+        <div class="val-row"><span class="val-label">raw.y</span><span class="val-num">${n2(raw.y)}</span></div>
+        <div class="val-row"><span class="val-label">raw.length()</span><span class="val-num ${len > UNIT_R ? 'warn' : ''}">${n2(len)}</span></div>
+        <div class="val-row"><span class="val-label">normalized.x</span><span class="val-num">${n2(norm.x)}</span></div>
+        <div class="val-row"><span class="val-label">normalized.y</span><span class="val-num">${n2(norm.y)}</span></div>
+        <div class="val-row"><span class="val-label">normalized length</span><span class="val-num">${len > 0 ? '1.00' : '—'}</span></div>
+        <div class="val-row"><span class="val-label">angle</span><span class="val-num">${n2(norm.angle())} rad</span></div>
+        <div class="code-block">const raw = mouse.clone().sub(origin);
+const dir = raw.clone().normalize();
+// dir.length() is always 1
+// dir.angle() = raw.angle()</div>`;
+    }
+
+    // =============================================================================
+    // DEMO 1 — Dot Product
+    // =============================================================================
+    let demo1t = 0;
+
+    function updateDemo1(dt) {
+      demo1t += dt * 0.72;  // 0.72 rad/s
+      const center = new Vector(W / 2, H / 2);
+
+      // Vector A: follows mouse
+      const rawA  = mouse.clone().sub(center);
+      const vecA  = rawA.length() > 5 ? rawA.clone().normalize() : new Vector(1, 0);
+
+      // Vector B: slow rotation
+      const vecB  = Vector.fromAngle(demo1t);
+
+      const dot   = vecA.dot(vecB);
+      const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+      const sign  = vecA.cross(vecB);
+
+      // Background tint based on dot
+      const col = dot > 0.1 ? [74, 222, 128] : dot < -0.1 ? [247, 37, 133] : [251, 191, 36];
+      ctx.save();
+      ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},0.04)`;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+
+      drawGrid();
+
+      const ARROW = 120;
+
+      // Projection of A onto B
+      const proj = vecB.clone().scale(dot * ARROW);
+      const projEnd = center.clone().add(proj);
+
+      // Dashed projection line
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = '#ffffff18'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      const aEnd = center.clone().add(vecA.clone().scale(ARROW));
+      ctx.moveTo(aEnd.x, aEnd.y);
+      ctx.lineTo(projEnd.x, projEnd.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // Projection dot on B axis
+      drawCircle(projEnd, 4, '#ffffff40', '', true);
+
+      // Vectors
+      drawArrow(center, center.clone().add(vecA.clone().scale(ARROW)), '#4cc9f0', 2.5, 'A (mouse)');
+      drawArrow(center, center.clone().add(vecB.clone().scale(ARROW)), '#f72585', 2.5, 'B (rotating)');
+
+      // Angle arc
+      ctx.save();
+      const startA = vecA.angle(), startB = vecB.angle();
+      ctx.strokeStyle = '#ffffff30'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, 40, startA, startB, sign > 0);
+      ctx.stroke();
+      const midAngle = startA + (startB - startA) * 0.5;
+      ctx.font = '10px Consolas, monospace';
+      ctx.fillStyle = '#ffffff60';
+      const la = center.clone().add(Vector.fromAngle(midAngle).scale(52));
+      ctx.fillText(deg(angle) + '°', la.x, la.y);
+      ctx.restore();
+
+      // Dot value label
+      const dotColor = dot > 0.1 ? '#4ade80' : dot < -0.1 ? '#f72585' : '#fbbf24';
+      ctx.save();
+      ctx.font = 'bold 13px Consolas, monospace';
+      ctx.fillStyle = dotColor;
+      ctx.fillText(`dot = ${n2(dot)}`, center.x + 120, center.y - 90);
+      ctx.restore();
+
+      // Center
+      drawCircle(center, 5, '#ffffff50', '', true);
+
+      const meaning = dot > 0.1 ? 'same direction' : dot < -0.1 ? 'opposite' : 'perpendicular';
+      const cls     = dot > 0.1 ? '' : dot < -0.1 ? 'danger' : 'warn';
+
+      document.getElementById('info').innerHTML = `
+        <h3>Dot Product</h3>
+        <p>Move your mouse to rotate <span style="color:var(--accent)">vector A</span>. <span style="color:var(--pink)">Vector B</span> rotates automatically.</p>
+        <div class="val-row"><span class="val-label">dot product</span><span class="val-num ${cls}">${n2(dot)}</span></div>
+        <div class="val-row"><span class="val-label">angle between</span><span class="val-num">${deg(angle)}°</span></div>
+        <div class="val-row"><span class="val-label">meaning</span><span class="val-num ${cls}">${meaning}</span></div>
+        <div class="val-row"><span class="val-label">cross (sign)</span><span class="val-num">${sign > 0 ? '+' : '−'} (${sign > 0 ? 'CCW' : 'CW'})</span></div>
+        <div class="legend">
+          <div class="legend-item"><div class="dot" style="background:#ffffff30;border:1px dashed #fff3"></div>projection of A onto B</div>
+        </div>
+        <div class="code-block">// Both must be unit vectors for
+// dot = cos(angle) to hold:
+const d = a.dot(b);
+// d > 0 → same direction
+// d = 0 → perpendicular
+// d < 0 → opposite</div>`;
+    }
+
+    // =============================================================================
+    // DEMO 2 — Lerp Comparison
+    // =============================================================================
+    const lerpTarget2 = { pos: new Vector(W * 0.6, H * 0.4), vel: new Vector(90, 60) };  // px/s
+    const cameras = [
+      { pos: new Vector(W / 2, H / 2), t: 0.02,  color: '#4cc9f0', label: 'Lazy  t=0.02' },
+      { pos: new Vector(W / 2, H / 2), t: 0.08,  color: '#4ade80', label: 'Smooth t=0.08' },
+      { pos: new Vector(W / 2, H / 2), t: 0.35,  color: '#f72585', label: 'Snappy t=0.35' }
+    ];
+
+    function updateDemo2(dt) {
+      lerpTarget2.pos.add(lerpTarget2.vel.clone().scale(dt));
+      if (lerpTarget2.pos.x < 20 || lerpTarget2.pos.x > W - 20) lerpTarget2.vel.x *= -1;
+      if (lerpTarget2.pos.y < 20 || lerpTarget2.pos.y > H - 20) lerpTarget2.vel.y *= -1;
+
+      for (const cam of cameras) cam.pos.lerp(lerpTarget2.pos, 1 - Math.pow(1 - cam.t, dt * 60));
+
+      drawGrid();
+
+      // Dashed lines from target to each camera
+      ctx.save();
+      ctx.setLineDash([3, 5]);
+      ctx.lineWidth = 1;
+      for (const cam of cameras) {
+        ctx.strokeStyle = cam.color + '30';
+        ctx.beginPath();
+        ctx.moveTo(cam.pos.x, cam.pos.y);
+        ctx.lineTo(lerpTarget2.pos.x, lerpTarget2.pos.y);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // Cameras
+      for (const cam of cameras) {
+        drawCircle(cam.pos, 10, cam.color, '');
+        ctx.save();
+        ctx.font = '10px Consolas, monospace';
+        ctx.fillStyle = cam.color;
+        ctx.fillText(cam.label, cam.pos.x + 14, cam.pos.y + 4);
+        ctx.restore();
+      }
+
+      // Target
+      drawCircle(lerpTarget2.pos, 15, '#ffffff60', 'Target');
+
+      document.getElementById('info').innerHTML = `
+        <h3>Lerp Factor Comparison</h3>
+        <p>All three circles chase the same target using <b>lerp</b> with different factors. Higher <code>t</code> = snappier, lower = smoother lag.</p>
+        <div class="val-row"><span class="val-label">target.x</span><span class="val-num">${n1(lerpTarget2.pos.x)}</span></div>
+        <div class="val-row"><span class="val-label">target.y</span><span class="val-num">${n1(lerpTarget2.pos.y)}</span></div>
+        ${cameras.map(c => `
+        <div class="val-row"><span class="val-label" style="color:${c.color}">${c.label}</span>
+          <span class="val-num">Δ${n1(c.pos.distance(lerpTarget2.pos))}px</span></div>`).join('')}
+        <div class="legend">
+          ${cameras.map(c => `<div class="legend-item"><div class="dot" style="background:${c.color}"></div>${c.label}</div>`).join('')}
+        </div>
+        <div class="code-block">// Each frame:
+camera.lerp(target, t);
+
+// t=0.02 → floaty
+// t=0.08 → smooth camera
+// t=0.35 → instant snap</div>`;
+    }
+
+    // =============================================================================
+    // DEMO 3 — Rotate & fromAngle / angle()
+    // =============================================================================
+    let demo3angle = 0;
+
+    function updateDemo3(dt) {
+      // Control angle with mouse x position
+      demo3angle = ((mouse.x / W) * Math.PI * 2) - Math.PI;
+
+      const center = new Vector(W / 2, H / 2);
+      const R = 130;
+
+      drawGrid();
+
+      // Unit circle
+      ctx.save();
+      ctx.beginPath(); ctx.arc(center.x, center.y, R, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffffff12'; ctx.lineWidth = 1; ctx.stroke();
+      // Axes
+      ctx.strokeStyle = '#ffffff10';
+      ctx.beginPath(); ctx.moveTo(center.x - R - 20, center.y); ctx.lineTo(center.x + R + 20, center.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(center.x, center.y - R - 20); ctx.lineTo(center.x, center.y + R + 20); ctx.stroke();
+      ctx.restore();
+
+      // Angle labels
+      const labels = [[0, '+x  0'], [Math.PI / 2, '+y  π/2'], [Math.PI, '±π'], [-Math.PI / 2, '-y  -π/2']];
+      ctx.save();
+      ctx.font = '10px Consolas, monospace';
+      ctx.fillStyle = '#ffffff20';
+      for (const [a, lbl] of labels) {
+        const p = center.clone().add(Vector.fromAngle(a).scale(R + 16));
+        ctx.fillText(lbl, p.x - 14, p.y + 4);
+      }
+      ctx.restore();
+
+      // The vector
+      const vec = Vector.fromAngle(demo3angle);
+      const tip = center.clone().add(vec.clone().scale(R));
+
+      // Angle arc
+      ctx.save();
+      ctx.strokeStyle = '#fbbf2440'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, 40, 0, demo3angle, demo3angle < 0);
+      ctx.stroke();
+      ctx.restore();
+
+      // Projection lines (cos/sin components)
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = '#4cc9f030'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(tip.x, tip.y); ctx.lineTo(tip.x, center.y); ctx.stroke();  // y component
+      ctx.beginPath(); ctx.moveTo(tip.x, tip.y); ctx.lineTo(center.x, tip.y); ctx.stroke(); // x component
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // cos/sin labels at projection feet
+      ctx.save();
+      ctx.font = '10px Consolas, monospace';
+      ctx.fillStyle = '#4cc9f060';
+      ctx.fillText(`cos=${n2(vec.x)}`, tip.x + 4, center.y + 12);
+      ctx.fillStyle = '#4ade8060';
+      ctx.fillText(`sin=${n2(vec.y)}`, center.x + 4, tip.y - 4);
+      ctx.restore();
+
+      // Main arrow
+      drawArrow(center, tip, '#4cc9f0', 2.5, '');
+      drawCircle(tip, 6, '#4cc9f0', '', true);
+      drawCircle(center, 5, '#f72585', '', true);
+
+      // Angle label near arc
+      ctx.save();
+      ctx.font = 'bold 11px Consolas, monospace';
+      ctx.fillStyle = '#fbbf24cc';
+      const arcMid = center.clone().add(Vector.fromAngle(demo3angle / 2).scale(55));
+      ctx.fillText(n2(demo3angle) + ' rad', arcMid.x + 4, arcMid.y);
+      ctx.restore();
+
+      document.getElementById('info').innerHTML = `
+        <h3>fromAngle() & angle()</h3>
+        <p>Move your mouse <b>horizontally</b> to rotate the vector through −π to +π.</p>
+        <div class="val-row"><span class="val-label">angle (radians)</span><span class="val-num">${n2(demo3angle)}</span></div>
+        <div class="val-row"><span class="val-label">angle (degrees)</span><span class="val-num">${deg(demo3angle)}°</span></div>
+        <div class="val-row"><span class="val-label">vec.x = cos(angle)</span><span class="val-num">${n2(vec.x)}</span></div>
+        <div class="val-row"><span class="val-label">vec.y = sin(angle)</span><span class="val-num">${n2(vec.y)}</span></div>
+        <div class="val-row"><span class="val-label">vec.length()</span><span class="val-num">1.00</span></div>
+        <div class="val-row"><span class="val-label">vec.angle() round-trip</span><span class="val-num">${n2(vec.angle())}</span></div>
+        <div class="code-block">const vec = Vector.fromAngle(rad);
+// vec.x = Math.cos(rad)
+// vec.y = Math.sin(rad)
+// vec.length() = 1
+
+vec.angle(); // recovers rad
+// Range: (-π, π]</div>`;
+    }
+
+    // =============================================================================
+    // Main loop
+    // =============================================================================
+    const demos = [updateDemo0, updateDemo1, updateDemo2, updateDemo3];
+    let currentDemo = 0;
+
+    function setDemo(i) {
+      currentDemo = i;
+      document.querySelectorAll('.tab').forEach((t, idx) => t.classList.toggle('active', idx === i));
+    }
+
+    let lastTime = 0;
+    function loop(timestamp) {
+      const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+      lastTime = timestamp;
+      ctx.clearRect(0, 0, W, H);
+      demos[currentDemo](dt);
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+  </script>
+
+</body>
+</html>

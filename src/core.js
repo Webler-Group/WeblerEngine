@@ -1,20 +1,23 @@
 /**
- * Factory is a design pattern providing a method for creating objects
- * without specifying their classes.
- *
- * @typedef {(params: Record<string, any>) => Scene} SceneFactory
+ * @typedef {(scene: Scene, params: Record<string, any>) => void} SceneInit
  */
 
-
-
 /**
- * 1st core class
- * Scene manager holds on all scenes in a registry of scene factories.
- * Responsible for managing the current scene and scene switching.
+ * 1st core class. Owns the active scene and handles transitions between scenes.
+ *
+ * Scenes are defined by registering an init function — a plain function that
+ * receives a fresh Scene and populates it with nodes. SceneManager creates the
+ * Scene object internally; callers never instantiate or extend Scene directly.
+ *
+ *   sm.register('game', (scene, params) => {
+ *     scene.addNode(new Player());
+ *     scene.addNode(new Level(params.level));
+ *   });
+ *   sm.switchScene('game', { level: 1 });
  */
 class SceneManager {
     /**
-     * @type {Map<string, SceneFactory>} 
+     * @type {Map<string, SceneInit>}
      */
     registry;
     /**
@@ -28,18 +31,20 @@ class SceneManager {
     }
 
     /**
-     * Registers new scene factory.
-     * 
-     * @param {string} name 
-     * @param {SceneFactory} factory 
+     * Registers an init function under a name. The init function is called by
+     * switchScene() with a fresh Scene and any params passed at switch time.
+     * Use it to add starting nodes to the scene via scene.addNode().
+     *
+     * @param {string} name
+     * @param {SceneInit} init
      */
-    register(name, factory) {
-        this.registry.set(name, factory);
+    register(name, init) {
+        this.registry.set(name, init);
     }
 
     /**
-     * Forwards dt to the current scene. No-op if there is no active scene.
-     *
+     * Updates current scene
+     * 
      * @param {number} dt
      */
     update(dt) {
@@ -49,14 +54,14 @@ class SceneManager {
     }
 
     /**
-     * Changes the current scene by destroying the
-     *
+     * Destroys current scene then initializes and starts new scene
+     * 
      * @param {string} name
      * @param {Record<string, any>} params
      */
-    switchScene(name, params) {
-        const factory = this.registry.get(name);
-        if (!factory) {
+    switchScene(name, params = {}) {
+        const init = this.registry.get(name);
+        if (!init) {
             throw new Error(`SceneManager: Unknown scene "${name}"`);
         }
 
@@ -64,7 +69,8 @@ class SceneManager {
             this.currentScene.destroy();
         }
 
-        const scene = factory(params);
+        const scene = new Scene();
+        init(scene, params);
         scene.start();
 
         this.currentScene = scene;
@@ -72,10 +78,18 @@ class SceneManager {
 }
 
 /**
- * 2nd core class
- * Every scene must extend from this class. This is container for scene nodes.
- * 
- * @abstract
+ * 2nd core class. A pure container for SceneNodes.
+ *
+ * Scene is created and managed entirely by SceneManager — callers never
+ * instantiate or extend it. To set up a scene, register an init function
+ * with SceneManager.register(); that function receives a fresh Scene and
+ * adds the starting nodes with addNode().
+ *
+ * Rules:
+ *   - Do NOT subclass Scene.
+ *   - Do NOT construct Scene directly (new Scene()).
+ *   - Do NOT add custom properties to a Scene instance.
+ *   - Scene is only a container; all game logic belongs in SceneNodes.
  */
 class Scene {
     /**

@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1 — Vectors | Build a 2D Engine</title>
+  <style>
+    :root {
+      --bg: #0f0f1e;
+      --panel: #181828;
+      --border: #2a2a45;
+      --accent: #4cc9f0;
+      --green: #4ade80;
+      --pink: #f72585;
+      --yellow: #fbbf24;
+      --text: #cdd6f4;
+      --muted: #6b7280;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Consolas', 'Courier New', monospace;
+      padding: 24px;
+      min-height: 100vh;
+    }
+
+    header {
+      margin-bottom: 20px;
+    }
+
+    header h1 {
+      color: var(--accent);
+      font-size: 1.3rem;
+      margin-bottom: 4px;
+    }
+
+    header p {
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .tab {
+      padding: 7px 14px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 5px;
+      font-family: inherit;
+      font-size: 0.8rem;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .tab:hover {
+      color: var(--text);
+      border-color: var(--accent);
+    }
+
+    .tab.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: #141428;
+    }
+
+    .demo-area {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    canvas {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #08080f;
+      cursor: crosshair;
+      display: block;
+      width: 100%;
+      max-width: 560px;
+      height: auto;
+    }
+
+    .info {
+      width: 260px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      min-height: 420px;
+    }
+
+    .info h3 {
+      color: var(--accent);
+      font-size: 0.85rem;
+      margin-bottom: 10px;
+      letter-spacing: 0.04em;
+    }
+
+    .info p {
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.65;
+      margin-bottom: 12px;
+    }
+
+    .val-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.78rem;
+    }
+
+    .val-row:last-of-type {
+      border-bottom: none;
+    }
+
+    .val-label {
+      color: var(--muted);
+    }
+
+    .val-num {
+      color: var(--green);
+      font-weight: bold;
+    }
+
+    .val-num.danger {
+      color: var(--pink);
+    }
+
+    .val-num.warn {
+      color: var(--yellow);
+    }
+
+    .code-block {
+      margin-top: 14px;
+      background: #08080f;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+      padding: 10px 12px;
+      font-size: 0.73rem;
+      color: #a5b4fc;
+      line-height: 1.7;
+      white-space: pre;
+      overflow-x: auto;
+    }
+
+    .legend {
+      margin-top: 12px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+
+    .dot {
+      width: 14px;
+      height: 3px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 0.78rem;
+    }
+
+    .slider-row label {
+      color: var(--muted);
+    }
+
+    input[type=range] {
+      flex: 1;
+      accent-color: var(--accent);
+    }
+
+    .slider-val {
+      color: var(--green);
+      width: 36px;
+      text-align: right;
+    }
+
+    @media (max-width: 740px) {
+      body {
+        padding: 12px;
+      }
+
+      .demo-area {
+        flex-direction: column;
+      }
+
+      .info {
+        width: 100%;
+        min-height: auto;
+      }
+
+      .tab {
+        padding: 6px 10px;
+        font-size: 0.75rem;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>Lesson 1 — Vectors</h1>
+    <p>Four interactive demos. Move your mouse or finger over the canvas to interact.</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="setDemo(0)">1. Moving Object</button>
+    <button class="tab" onclick="setDemo(1)">2. Find Direction</button>
+    <button class="tab" onclick="setDemo(2)">3. Dot Product</button>
+    <button class="tab" onclick="setDemo(3)">4. Lerp Follow</button>
+  </div>
+
+  <div class="demo-area">
+    <canvas id="canvas" width="560" height="420"></canvas>
+    <div class="info" id="info"></div>
+  </div>
+
+  <script>
+    // =============================================================================
+    // Vector class (from src/utils.js)
+    // =============================================================================
+    class Vector {
+      constructor(x = 0, y = 0) { this.x = x; this.y = y; }
+      static zero() { return new Vector(0, 0); }
+      static one() { return new Vector(1, 1); }
+      static from(v) { return new Vector(v.x, v.y); }
+      static fromAngle(rad) { return new Vector(Math.cos(rad), Math.sin(rad)); }
+      set(x, y) { this.x = x; this.y = y; return this; }
+      copy(v) { this.x = v.x; this.y = v.y; return this; }
+      clone() { return new Vector(this.x, this.y); }
+      add(v) { this.x += v.x; this.y += v.y; return this; }
+      sub(v) { this.x -= v.x; this.y -= v.y; return this; }
+      mul(v) { this.x *= v.x; this.y *= v.y; return this; }
+      scale(s) { this.x *= s; this.y *= s; return this; }
+      negate() { this.x = -this.x; this.y = -this.y; return this; }
+      normalize() { const l = this.length(); if (l > 0) { this.x /= l; this.y /= l; } return this; }
+      rotate(rad) {
+        const c = Math.cos(rad), s = Math.sin(rad);
+        const nx = this.x * c - this.y * s;
+        this.y = this.x * s + this.y * c;
+        this.x = nx;
+        return this;
+      }
+      lerp(v, t) { this.x += (v.x - this.x) * t; this.y += (v.y - this.y) * t; return this; }
+      length() { return Math.sqrt(this.x * this.x + this.y * this.y); }
+      lengthSq() { return this.x * this.x + this.y * this.y; }
+      dot(v) { return this.x * v.x + this.y * v.y; }
+      cross(v) { return this.x * v.y - this.y * v.x; }
+      distance(v) { const dx = this.x - v.x, dy = this.y - v.y; return Math.sqrt(dx * dx + dy * dy); }
+      distanceSq(v) { const dx = this.x - v.x, dy = this.y - v.y; return dx * dx + dy * dy; }
+      angle() { return Math.atan2(this.y, this.x); }
+      equals(v, e = 0) { return Math.abs(this.x - v.x) <= e && Math.abs(this.y - v.y) <= e; }
+      toString() { return `Vector(${this.x.toFixed(2)}, ${this.y.toFixed(2)})`; }
+    }
+
+    // =============================================================================
+    // Canvas setup
+    // =============================================================================
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const mouse = new Vector(W / 2, H / 2);
+
+    function getCanvasPoint(clientX, clientY) {
+      const r = canvas.getBoundingClientRect();
+      return new Vector(
+        (clientX - r.left) * (canvas.width / r.width),
+        (clientY - r.top) * (canvas.height / r.height)
+      );
+    }
+    canvas.addEventListener('mousemove', e => {
+      mouse.copy(getCanvasPoint(e.clientX, e.clientY));
+    });
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      mouse.copy(getCanvasPoint(e.touches[0].clientX, e.touches[0].clientY));
+    }, { passive: false });
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      mouse.copy(getCanvasPoint(e.touches[0].clientX, e.touches[0].clientY));
+    }, { passive: false });
+
+    // =============================================================================
+    // Drawing helpers
+    // =============================================================================
+    function n2(v) { return v.toFixed(2); }
+    function n1(v) { return v.toFixed(1); }
+
+    function drawArrow(from, to, color, width = 1.5, label = '') {
+      const dx = to.x - from.x, dy = to.y - from.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 2) return;
+
+      const ux = dx / len, uy = dy / len;
+      const arrowLen = Math.min(12, len * 0.35);
+      const arrowW = arrowLen * 0.45;
+
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = width;
+
+      // Shaft
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x - ux * arrowLen, to.y - uy * arrowLen);
+      ctx.stroke();
+
+      // Arrowhead
+      ctx.beginPath();
+      ctx.moveTo(to.x, to.y);
+      ctx.lineTo(to.x - ux * arrowLen - uy * arrowW, to.y - uy * arrowLen + ux * arrowW);
+      ctx.lineTo(to.x - ux * arrowLen + uy * arrowW, to.y - uy * arrowLen - ux * arrowW);
+      ctx.closePath();
+      ctx.fill();
+
+      // Label
+      if (label) {
+        ctx.font = '11px Consolas, monospace';
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.85;
+        ctx.fillText(label, to.x + ux * 6 + 4, to.y + uy * 6 + 4);
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+    }
+
+    function drawCircle(pos, r, color, label = '') {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = color + '33';
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      if (label) {
+        ctx.font = '11px Consolas, monospace';
+        ctx.fillStyle = color;
+        ctx.fillText(label, pos.x + r + 5, pos.y + 4);
+      }
+      ctx.restore();
+    }
+
+    function drawGrid() {
+      ctx.save();
+      ctx.strokeStyle = '#ffffff08';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+      for (let y = 0; y <= H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+      ctx.restore();
+    }
+
+    function drawOriginLabel() {
+      ctx.save();
+      ctx.font = '10px Consolas, monospace';
+      ctx.fillStyle = '#ffffff30';
+      ctx.fillText('(0, 0)', 4, 13);
+      ctx.restore();
+    }
+
+    // =============================================================================
+    // DEMO 0 — Moving Object
+    // =============================================================================
+    const ball0 = {
+      pos: new Vector(W / 2, H / 2),
+      vel: new Vector(132, 102)   // px/s
+    };
+
+    function updateDemo0(dt) {
+      const { pos, vel } = ball0;
+      pos.add(vel.clone().scale(dt));
+      if (pos.x < 16 || pos.x > W - 16) vel.x *= -1;
+      if (pos.y < 16 || pos.y > H - 16) vel.y *= -1;
+
+      drawGrid();
+      drawOriginLabel();
+
+      // Position vector: origin → ball
+      drawArrow(new Vector(0, 0), pos, '#4cc9f0', 1.5, '');
+      ctx.save();
+      ctx.font = '10px Consolas, monospace';
+      ctx.fillStyle = '#4cc9f0aa';
+      ctx.fillText('position', pos.x * 0.5 - 18, pos.y * 0.5 - 6);
+      ctx.restore();
+
+      // Velocity vector: from ball (scaled up so it's visible)
+      const velDisplay = vel.clone().scale(18);
+      const velEnd = pos.clone().add(velDisplay);
+      drawArrow(pos, velEnd, '#4ade80', 2, 'velocity ×18');
+
+      // Ball
+      drawCircle(pos, 14, '#ffffff', '');
+      ctx.save();
+      ctx.font = 'bold 11px Consolas, monospace';
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.fillText('●', pos.x, pos.y + 4);
+      ctx.restore();
+
+      const speed = vel.length();
+      const norm = vel.clone().normalize();
+
+      document.getElementById('info').innerHTML = `
+    <h3>Moving Object</h3>
+    <p>The ball's <span style="color:var(--accent)">position</span> and <span style="color:var(--green)">velocity</span> are both vectors. Each frame we add velocity to position.</p>
+    <div class="val-row"><span class="val-label">position.x</span><span class="val-num">${n1(ball0.pos.x)}</span></div>
+    <div class="val-row"><span class="val-label">position.y</span><span class="val-num">${n1(ball0.pos.y)}</span></div>
+    <div class="val-row"><span class="val-label">velocity.x</span><span class="val-num">${n2(ball0.vel.x)}</span></div>
+    <div class="val-row"><span class="val-label">velocity.y</span><span class="val-num">${n2(ball0.vel.y)}</span></div>
+    <div class="val-row"><span class="val-label">speed (length)</span><span class="val-num">${n2(speed)}</span></div>
+    <div class="val-row"><span class="val-label">direction.x</span><span class="val-num">${n2(norm.x)}</span></div>
+    <div class="val-row"><span class="val-label">direction.y</span><span class="val-num">${n2(norm.y)}</span></div>
+    <div class="legend">
+      <div class="legend-item"><div class="dot" style="background:var(--accent)"></div>position vector (origin → ball)</div>
+      <div class="legend-item"><div class="dot" style="background:var(--green)"></div>velocity vector (from ball)</div>
+    </div>
+    <div class="code-block">// Each frame:
+position.add(velocity);
+
+// Speed = velocity.length()
+const speed = velocity.length();</div>`;
+    }
+
+    // =============================================================================
+    // DEMO 1 — Find Direction (mouse interaction)
+    // =============================================================================
+    const origin1 = new Vector(W / 2, H / 2);
+
+    function updateDemo1(dt) {
+      drawGrid();
+      drawOriginLabel();
+
+      const raw = mouse.clone().sub(origin1);
+      const len = raw.length();
+      const norm = len > 0 ? raw.clone().normalize() : new Vector(0, 0);
+      const speed = 160;
+      const scaled = norm.clone().scale(speed);
+      const scaledEnd = origin1.clone().add(scaled);
+
+      // Raw vector (mouse pos)
+      drawArrow(origin1, mouse, '#ffffff18', 1, '');
+
+      // Raw label
+      ctx.save();
+      ctx.font = '10px Consolas, monospace';
+      ctx.fillStyle = '#ffffff30';
+      ctx.fillText('raw vector', (origin1.x + mouse.x) / 2 + 6, (origin1.y + mouse.y) / 2);
+      ctx.restore();
+
+      // Normalized × speed
+      drawArrow(origin1, scaledEnd, '#4cc9f0', 2.5, `×${speed}`);
+
+      // Origin dot
+      drawCircle(origin1, 8, '#f72585', 'origin');
+
+      // Mouse dot
+      drawCircle(mouse, 7, '#ffffff50', '');
+
+      document.getElementById('info').innerHTML = `
+    <h3>Find Direction</h3>
+    <p>Move your mouse. The <span style="color:var(--accent)">cyan arrow</span> always points toward the cursor at exactly <b>160 px</b> — that's the normalize-then-scale pattern.</p>
+    <div class="val-row"><span class="val-label">mouse.x</span><span class="val-num">${n1(mouse.x)}</span></div>
+    <div class="val-row"><span class="val-label">mouse.y</span><span class="val-num">${n1(mouse.y)}</span></div>
+    <div class="val-row"><span class="val-label">raw length</span><span class="val-num">${n1(len)}</span></div>
+    <div class="val-row"><span class="val-label">normalized.x</span><span class="val-num">${n2(norm.x)}</span></div>
+    <div class="val-row"><span class="val-label">normalized.y</span><span class="val-num">${n2(norm.y)}</span></div>
+    <div class="val-row"><span class="val-label">norm length</span><span class="val-num">${len > 0 ? '1.00' : '0.00'}</span></div>
+    <div class="code-block">const dir = target.clone()
+  .sub(origin)   // point at target
+  .normalize()   // length = 1
+  .scale(speed); // apply speed</div>`;
+    }
+
+    // =============================================================================
+    // DEMO 2 — Dot Product / Field of View
+    // =============================================================================
+    let demo2t = 0;
+
+    function updateDemo2(dt) {
+      demo2t += dt;
+
+      const center = new Vector(W / 2, H / 2);
+      // Guard slowly rotates to face mouse
+      const toMouse = mouse.clone().sub(center);
+      const guardAngle = toMouse.length() > 5 ? toMouse.angle() : 0;
+      const facing = Vector.fromAngle(guardAngle);
+
+      // Player orbits at varying speed
+      const playerAngle = demo2t * 0.9;
+      const playerPos = center.clone().add(Vector.fromAngle(playerAngle).scale(155));
+
+      const toPlayer = playerPos.clone().sub(center).normalize();
+      const dot = facing.dot(toPlayer);
+      const FOV_COS = 0.65;   // ~49°
+      const spotted = dot >= FOV_COS;
+
+      // FOV cone
+      const halfFov = Math.acos(FOV_COS);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(center.x, center.y);
+      ctx.arc(center.x, center.y, 200, guardAngle - halfFov, guardAngle + halfFov);
+      ctx.closePath();
+      ctx.fillStyle = spotted ? 'rgba(247,37,133,0.13)' : 'rgba(76,201,240,0.07)';
+      ctx.strokeStyle = spotted ? '#f7258540' : '#4cc9f020';
+      ctx.lineWidth = 1;
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      drawGrid();
+
+      // Facing arrow
+      const facingEnd = center.clone().add(facing.clone().scale(90));
+      drawArrow(center, facingEnd, '#4cc9f0', 2.5, 'facing');
+
+      // toPlayer arrow
+      const toPlayerEnd = center.clone().add(toPlayer.clone().scale(70));
+      drawArrow(center, toPlayerEnd, '#ffffff40', 1.5, 'toPlayer');
+
+      // Guard
+      drawCircle(center, 14, '#4cc9f0', 'Guard');
+      ctx.save();
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillStyle = '#4cc9f0';
+      ctx.textAlign = 'center';
+      ctx.fillText('⬡', center.x, center.y + 5);
+      ctx.restore();
+
+      // Player
+      const playerColor = spotted ? '#f72585' : '#4ade80';
+      drawCircle(playerPos, 13, playerColor, spotted ? '! SPOTTED' : 'Player');
+
+      // Dot label
+      ctx.save();
+      ctx.font = 'bold 12px Consolas, monospace';
+      ctx.fillStyle = spotted ? '#f72585' : '#4ade80';
+      ctx.fillText(`dot = ${n2(dot)}`, center.x + 100, center.y - 80);
+      ctx.restore();
+
+      const angleDeg = (Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI).toFixed(1);
+
+      document.getElementById('info').innerHTML = `
+    <h3>Dot Product — Field of View</h3>
+    <p>The guard <span style="color:var(--accent)">faces your mouse</span>. The orbiting player is <span style="${spotted ? 'color:var(--pink)' : 'color:var(--green)'}"><b>${spotted ? 'SPOTTED' : 'not seen'}</b></span> when inside the FOV cone.</p>
+    <div class="val-row"><span class="val-label">dot product</span><span class="val-num ${spotted ? 'danger' : ''}">${n2(dot)}</span></div>
+    <div class="val-row"><span class="val-label">angle between</span><span class="val-num">${angleDeg}°</span></div>
+    <div class="val-row"><span class="val-label">FOV threshold</span><span class="val-num">> 0.65</span></div>
+    <div class="val-row"><span class="val-label">status</span><span class="val-num ${spotted ? 'danger' : ''}">${spotted ? 'SPOTTED' : 'hidden'}</span></div>
+    <div class="legend">
+      <div class="legend-item"><div class="dot" style="background:var(--accent)"></div>guard facing direction</div>
+      <div class="legend-item"><div class="dot" style="background:#ffffff40"></div>direction to player</div>
+    </div>
+    <div class="code-block">const d = facing.dot(toPlayer);
+// d > 0  → same direction
+// d = 0  → perpendicular
+// d < 0  → opposite
+if (d > 0.65) spotted = true;</div>`;
+    }
+
+    // =============================================================================
+    // DEMO 3 — Lerp Follow
+    // =============================================================================
+    const lerpTarget = { pos: new Vector(W * 0.7, H * 0.4), vel: new Vector(96, 66) };  // px/s
+    const camera3 = new Vector(W / 2, H / 2);
+    let lerpFactor = 0.05;
+    let lerpSliderInit = false;
+
+    function initLerpSlider() {
+      if (lerpSliderInit) return;
+      lerpSliderInit = true;
+      // slider is rendered in info panel, attach after render
+    }
+
+    function updateDemo3(dt) {
+      // Bounce target
+      lerpTarget.pos.add(lerpTarget.vel.clone().scale(dt));
+      if (lerpTarget.pos.x < 20 || lerpTarget.pos.x > W - 20) lerpTarget.vel.x *= -1;
+      if (lerpTarget.pos.y < 20 || lerpTarget.pos.y > H - 20) lerpTarget.vel.y *= -1;
+
+      // Smooth follow — frame-rate independent lerp
+      camera3.lerp(lerpTarget.pos, 1 - Math.pow(1 - lerpFactor, dt * 60));
+
+      const dist = camera3.distance(lerpTarget.pos);
+
+      drawGrid();
+
+      // Line between camera and target
+      ctx.save();
+      ctx.setLineDash([5, 5]);
+      ctx.strokeStyle = '#ffffff20';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(camera3.x, camera3.y);
+      ctx.lineTo(lerpTarget.pos.x, lerpTarget.pos.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // Lerp direction arrow
+      const dir = lerpTarget.pos.clone().sub(camera3);
+      if (dir.length() > 4) {
+        const step = dir.clone().scale(lerpFactor);
+        const stepEnd = camera3.clone().add(step.clone().scale(20));
+        drawArrow(camera3, stepEnd, '#fbbf2460', 1.5, `×${lerpFactor}`);
+      }
+
+      // Target (red)
+      drawCircle(lerpTarget.pos, 14, '#f72585', 'Target');
+
+      // Camera (blue)
+      drawCircle(camera3, 10, '#4cc9f0', 'Camera');
+
+      document.getElementById('info').innerHTML = `
+    <h3>Lerp Follow</h3>
+    <p>The camera <span style="color:var(--accent)">lerps</span> toward the target each frame. Adjust the factor to change how snappy or smooth it feels.</p>
+    <div class="val-row"><span class="val-label">camera.x</span><span class="val-num">${n1(camera3.x)}</span></div>
+    <div class="val-row"><span class="val-label">camera.y</span><span class="val-num">${n1(camera3.y)}</span></div>
+    <div class="val-row"><span class="val-label">target.x</span><span class="val-num">${n1(lerpTarget.pos.x)}</span></div>
+    <div class="val-row"><span class="val-label">target.y</span><span class="val-num">${n1(lerpTarget.pos.y)}</span></div>
+    <div class="val-row"><span class="val-label">distance</span><span class="val-num">${n1(dist)}</span></div>
+    <div class="slider-row">
+      <label>lerp factor</label>
+      <input type="range" id="lerpSlider" min="1" max="30" value="${Math.round(lerpFactor * 100)}"
+        oninput="lerpFactor = this.value / 100; document.getElementById('lerpVal').textContent = lerpFactor.toFixed(2)">
+      <span class="slider-val" id="lerpVal">${lerpFactor.toFixed(2)}</span>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="dot" style="background:var(--pink)"></div>moving target</div>
+      <div class="legend-item"><div class="dot" style="background:var(--accent)"></div>camera (lerps toward target)</div>
+    </div>
+    <div class="code-block">// Called every frame:
+camera.lerp(target, ${lerpFactor.toFixed(2)});
+
+// Each call moves camera
+// ${Math.round(lerpFactor * 100)}% closer to target.</div>`;
+    }
+
+    // =============================================================================
+    // Main loop
+    // =============================================================================
+    const demos = [updateDemo0, updateDemo1, updateDemo2, updateDemo3];
+    let currentDemo = 0;
+
+    function setDemo(i) {
+      currentDemo = i;
+      document.querySelectorAll('.tab').forEach((t, idx) => t.classList.toggle('active', idx === i));
+    }
+
+    let lastTime = 0;
+    function loop(timestamp) {
+      const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+      lastTime = timestamp;
+      ctx.clearRect(0, 0, W, H);
+      demos[currentDemo](dt);
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,181 @@
+{
+  "code": "build-2d-engine-js",
+  "title": "Build a 2D Game Engine in JavaScript",
+  "description": "A hands-on course for intermediate JavaScript developers. Learn how a game engine works by building one from scratch — no frameworks, no black boxes.",
+  "visible": false,
+  "lessons": [
+    {
+      "title": "Vectors — The Basics",
+      "nodes": [
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## What is a Vector?\n\nBefore we write a single line of game code, we need to understand **vectors** — the mathematical backbone of almost every mechanic you will ever build.\n\nIn everyday math you have worked with **scalars** — plain numbers like `5`, `3.14`, or `-2`. A scalar has only *magnitude* (size).\n\nA **vector** adds **direction**. It describes not just *how much* but *how much, and which way*.\n\n| Scalar | Vector |\n|--------|--------|\n| Walk 5 metres | Walk 5 metres **north** |\n| Speed: 120 km/h | Velocity: 120 km/h **east** |\n| Distance: 300 px | Displacement: 300 px **diagonally up-right** |\n\nIn a 2D game, vectors represent:\n\n- **Position** — where is the object on screen?\n- **Velocity** — how fast is it moving, and in which direction?\n- **Direction** — which way is the player facing?\n- **Force** — how hard is gravity pulling, and which way?\n\nWithout vectors, every calculation involving both magnitude and direction would need two separate variables (`x` and `y`), and all the connecting math would be written by hand, repeatedly. Vectors package that up cleanly — and they come with a full set of operations built in."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Vectors in 2D Space\n\nIn 2D, a vector is simply a pair of numbers: **(x, y)**.\n\nPicture a grid. The **x-axis** runs left to right, and the **y-axis** runs top to bottom. A vector `(3, 2)` means *3 units right, 2 units down*.\n\n### The Canvas Coordinate System\n\n> **Important:** In school maths, the y-axis points **up**. On an HTML `<canvas>`, it points **down** — `(0, 0)` is the **top-left corner**, and y grows as you move toward the bottom of the screen.\n\n```\n(0,0) ──────────────► x+\n  │\n  │        • (200, 120)\n  │\n  ▼ y+\n```\n\nThis trips up almost every beginner. Keep it in mind: a positive y-velocity means the object moves *down*, not up.\n\n### Vectors as Arrows\n\nIt helps to picture a vector as an **arrow**. The arrow's **length** is its magnitude, and the arrow's direction is the direction of the vector.\n\nWhen a vector represents a *position*, the arrow starts at the origin `(0, 0)` and points to the location. When it represents *velocity* or *force*, the arrow starts at the object and points the way it is moving or being pushed.\n\n### Creating Vectors\n\n```js\n// From x and y components\nconst a = new Vector(3, 4);   // { x: 3, y: 4 }\nconst b = new Vector();       // { x: 0, y: 0 }  (defaults)\n\n// Convenience factories\nconst zero = Vector.zero();              // (0, 0)\nconst one  = Vector.one();               // (1, 1)\nconst copy = Vector.from(a);             // (3, 4) — new object\n```\n\nOperations **mutate `this`** and return `this` for chaining — a deliberate performance choice for 60 fps game loops. Use `.clone()` when you need to preserve the original:\n\n```js\nposition.add(velocity);              // fast — mutates in place\nconst projected = pos.clone().add(offset);  // safe — original unchanged\n```"
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Adding and Subtracting Vectors\n\n### Addition — Combining Effects\n\nAdding two vectors combines their effects component by component:\n\n```\nA = (2, 1)\nB = (1, 3)\n─────────\nA + B = (3, 4)\n```\n\nIn game terms: if a player's movement is `(3, 0)` (right) and wind is `(1, 2)` (right and down), the actual displacement that frame is `(4, 2)`.\n\n```js\nconst velocity = new Vector(3, 0);\nconst wind     = new Vector(1, 2);\nvelocity.add(wind);   // velocity is now (4, 2)\n```\n\n### Subtraction — The Vector Between Two Points\n\nSubtracting one vector from another gives the vector that goes *from one point to the other*:\n\n```\ndirection = target − origin\n```\n\n```js\nconst player = new Vector(100, 150);\nconst enemy  = new Vector(400, 300);\n\nconst toEnemy = enemy.clone().sub(player);\n// toEnemy = (300, 150)  →  points from player toward enemy\n```\n\nNotice `.clone()` before `.sub()` — without it, `enemy.sub(player)` would mutate the enemy's position.\n\n> **Memorise this pattern:** `target.clone().sub(origin)` gives the vector pointing from `origin` toward `target`. You will use it constantly in every future lesson."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Scaling, Negating, and Component Multiply\n\n### scale(s) — Uniform Multiply\n\n`scale(s)` multiplies both components by a single number. This is how you apply a speed to a direction:\n\n```js\nconst dir = new Vector(1, 0);   // pointing right, length = 1\ndir.scale(200);                 // still pointing right, length = 200\n```\n\nChaining works naturally:\n\n```js\nconst velocity = enemy.clone().sub(player)\n  .normalize()          // pure direction (covered next lesson)\n  .scale(bulletSpeed);  // apply speed\n```\n\n### negate() — Flip the Direction\n\n`negate()` reverses both components — equivalent to `scale(-1)`:\n\n```js\nconst bounce = velocity.clone().negate();\n// (3, -2) → (-3, 2)  — useful for wall bounces\n```\n\n### mul(v) and div(v) — Component-wise\n\nThese operate on each component independently, useful for non-uniform scaling:\n\n```js\nconst velocity = new Vector(10, 5);\nconst drag     = new Vector(0.9, 0.8);  // more drag on y\nvelocity.mul(drag);   // (9, 4)\n```\n\n`div(v)` is the inverse — handy when converting between coordinate spaces.\n\n### set() and copy()\n\n```js\nconst v = new Vector();\nv.set(50, 80);     // assign new x and y directly\nv.copy(other);     // copy x and y from another vector\n```"
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Length and Distance\n\n### length() — Magnitude\n\nThe length of a vector is calculated with the **Pythagorean theorem**:\n\n```\nlength = √(x² + y²)\n```\n\n```js\nconst v = new Vector(3, 4);\nv.length();   // √(9 + 16) = √25 = 5\n```\n\n### The Squared-Length Trick\n\n`Math.sqrt()` is relatively expensive. Whenever you only need to *compare* lengths (is the object within range?), skip the square root entirely:\n\n```js\nconst range = 100;\n\n// Readable but calls sqrt:\nif (a.distance(b) < range) { ... }\n\n// Faster — same result, no sqrt:\nif (a.distanceSq(b) < range * range) { ... }\n```\n\n`lengthSq()` and `distanceSq()` exist precisely for this. Use them inside game-loop code.\n\n### distance() and distanceSq()\n\n```js\nconst a = new Vector(0, 0);\nconst b = new Vector(3, 4);\n\na.distance(b);    // 5\na.distanceSq(b);  // 25  (skip the sqrt — use for comparisons)\n```\n\n### equals()\n\n```js\na.equals(b);            // exact match\na.equals(b, 0.001);     // match within epsilon — useful for floats\n```\n\nFloating-point arithmetic can produce tiny rounding errors, so the `epsilon` parameter is important when comparing positions that should theoretically be the same."
+        },
+        {
+          "type": 2,
+          "text": "A player is at `(100, 50)` and an enemy is at `(400, 200)`. Which code gives the vector pointing **from the player toward the enemy**?",
+          "answers": [
+            { "text": "`enemy.clone().sub(player)`", "correct": true },
+            { "text": "`player.clone().sub(enemy)`", "correct": false },
+            { "text": "`player.clone().add(enemy)`", "correct": false },
+            { "text": "`enemy.clone().add(player)`", "correct": false }
+          ]
+        },
+        {
+          "type": 4,
+          "text": "What is the result of `new Vector(3, 4).length()`? (answer with a number)",
+          "correctAnswer": "5"
+        },
+        {
+          "type": 5,
+          "mode": 1,
+          "codeId": "69bee776334b9c85c171b7c9"
+        }
+      ]
+    },
+    {
+      "title": "Vectors — Direction & Angles",
+      "nodes": [
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Normalization — Pure Direction\n\nA **unit vector** has a length of exactly `1`. It carries *direction* only — no magnitude.\n\n`normalize()` divides each component by the vector's current length:\n\n```js\nconst v = new Vector(3, 4);   // length = 5\nv.normalize();                // (0.6, 0.8)  →  length = 1\n```\n\nAll unit vectors, regardless of where they point, live on an imaginary circle of radius 1 around the origin — the **unit circle**.\n\n### The Most Important Game Pattern\n\nGet direction → normalize → scale by speed:\n\n```js\nconst dir = mousePos.clone().sub(playerPos);  // vector pointing at mouse\ndir.normalize();        // strip magnitude, keep direction\ndir.scale(speed);       // apply desired speed\nplayerPos.add(dir);     // update position\n```\n\nOr chained:\n\n```js\nplayerPos.add(\n  mousePos.clone().sub(playerPos).normalize().scale(speed)\n);\n```\n\n### Why Normalize Before Scaling?\n\nIf you skip normalizing, diagonal movement becomes faster than axis-aligned movement:\n\n```js\n// Moving right: velocity = (1, 0), length = 1  ✓\n// Moving diagonally: velocity = (1, 1), length = 1.41  ✗\n\n// After normalize:\n// Moving diagonally: velocity = (0.707, 0.707), length = 1  ✓\n```\n\nAlways normalize *before* scaling. Scaling first then normalizing just sets length back to 1 — defeating the purpose."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## The Dot Product\n\nThe **dot product** of two vectors produces a single number:\n\n```\nA · B = (A.x × B.x) + (A.y × B.y)\n```\n\n```js\nconst a = new Vector(1, 0);   // pointing right\nconst b = new Vector(0, 1);   // pointing down\n\na.dot(b);   // (1×0) + (0×1) = 0\n```\n\n### What the Result Tells You\n\n| Result | Meaning |\n|--------|---------|\n| **> 0** | Vectors point roughly the **same direction** |\n| **= 0** | Vectors are **perpendicular** (90° apart) |\n| **< 0** | Vectors point roughly **opposite directions** |\n\nFor unit vectors, `dot = cos(angle)`. So: `1.0` → same, `0.0` → perpendicular, `-1.0` → opposite.\n\n### Game Use Case: Field of View\n\n```js\nconst facing   = Vector.fromAngle(guard.angle);\nconst toPlayer = player.pos.clone().sub(guard.pos).normalize();\n\nconst d = facing.dot(toPlayer);\n\nif (d > 0.7) {\n  // d = cos(angle) → d > 0.7 means angle < ~46°\n  // player is inside the guard's field of view\n}\n```\n\n### Cross Product\n\n`cross(v)` returns the Z component of the 3D cross product — a scalar in 2D:\n\n```js\na.cross(b);   // positive → b is counter-clockwise from a\n              // negative → b is clockwise from a\n```\n\nUseful for determining turn direction (should the enemy turn left or right to face the player?)."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Rotation and Angle Conversion\n\n### rotate(angleRad)\n\nRotates the vector in place. In canvas coordinates, positive angles rotate **clockwise**:\n\n```js\nconst right = new Vector(1, 0);\nright.rotate(Math.PI / 2);   // now (0, 1)  — pointing down\nright.rotate(Math.PI / 2);   // now (-1, 0) — pointing left\n```\n\nUseful for rotating projectile trajectories, orbiting enemies, or spinning any direction vector.\n\n### fromAngle(rad) — Angle to Vector\n\nCreates a unit vector pointing at a given angle (measured from the +x axis, clockwise in canvas):\n\n```js\nVector.fromAngle(0);             // (1, 0)   — right\nVector.fromAngle(Math.PI / 2);   // (0, 1)   — down\nVector.fromAngle(Math.PI);       // (-1, 0)  — left\nVector.fromAngle(-Math.PI / 2);  // (0, -1)  — up\n```\n\n### angle() — Vector to Angle\n\nReturns the angle of the vector from the +x axis in radians, in the range `(-π, π]`:\n\n```js\nnew Vector(1, 0).angle();    // 0\nnew Vector(0, 1).angle();    // 1.5707... (π/2)\nnew Vector(-1, 0).angle();   // 3.1415... (π)\n```\n\n### Round-tripping\n\n`fromAngle` and `angle()` are inverses of each other:\n\n```js\nconst rad = Math.PI / 3;                    // 60°\nconst dir = Vector.fromAngle(rad);          // unit vector at 60°\ndir.angle();                                // Math.PI / 3  ✓\n\n// Game loop pattern:\nobj.angle += turnSpeed * dt;                // rotate object\nconst facing = Vector.fromAngle(obj.angle); // facing direction\n```"
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Lerp — Linear Interpolation\n\n`lerp(v, t)` moves `this` toward `v` by a factor `t`, where `0` means stay and `1` means jump to target:\n\n```js\nconst a = new Vector(0, 0);\nconst b = new Vector(100, 80);\n\na.lerp(b, 0);    // (0, 0)    — unchanged\na.lerp(b, 0.5);  // (50, 40)  — halfway\na.lerp(b, 1);    // (100, 80) — at target\n```\n\n### Smooth Camera Follow\n\nCalling `lerp` every frame with a small `t` produces smooth, decelerating motion:\n\n```js\n// In the game loop:\ncamera.lerp(player.position, 0.05);\n```\n\nEach frame the camera moves 5% of the remaining distance. The further it is from the player, the faster it catches up — it naturally decelerates. One line of code, no physics needed.\n\n### Choosing the Factor\n\n| t value | Feel |\n|---------|------|\n| 0.02 | Very lazy, floaty follow |\n| 0.05 | Smooth, natural camera |\n| 0.15 | Snappy, responsive |\n| 0.4+ | Almost instant |\n\nNote: `lerp` with small `t` is **frame-rate dependent**. For a physics-correct version, use `lerp(v, 1 - Math.pow(1 - t, dt * 60))`. For simple games the naive version is fine.\n\n### Other Uses\n\n```js\n// Smoothly blend between two colours (as vectors)\nconst color = colorA.clone().lerp(colorB, healthPercent);\n\n// Ease a UI element onto screen\nuiPos.lerp(targetPos, 0.08);\n```"
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## The Full Vector Class\n\nHere is the complete `Vector` class from `src/utils.js`. Every method you have seen across both lessons is here.\n\n```js\nclass Vector {\n  constructor(x = 0, y = 0) { this.x = x; this.y = y; }\n\n  static zero()         { return new Vector(0, 0); }\n  static one()          { return new Vector(1, 1); }\n  static from(v)        { return new Vector(v.x, v.y); }\n  static fromAngle(rad) { return new Vector(Math.cos(rad), Math.sin(rad)); }\n\n  set(x, y)  { this.x = x; this.y = y; return this; }\n  copy(v)    { this.x = v.x; this.y = v.y; return this; }\n  clone()    { return new Vector(this.x, this.y); }\n\n  add(v)   { this.x += v.x; this.y += v.y; return this; }\n  sub(v)   { this.x -= v.x; this.y -= v.y; return this; }\n  mul(v)   { this.x *= v.x; this.y *= v.y; return this; }\n  div(v)   { this.x /= v.x; this.y /= v.y; return this; }\n  scale(s) { this.x *= s;   this.y *= s;   return this; }\n  negate() { this.x = -this.x; this.y = -this.y; return this; }\n\n  normalize() {\n    const len = this.length();\n    if (len > 0) { this.x /= len; this.y /= len; }\n    return this;\n  }\n\n  rotate(rad) {\n    const cos = Math.cos(rad), sin = Math.sin(rad);\n    const x = this.x * cos - this.y * sin;\n    this.y   = this.x * sin + this.y * cos;\n    this.x   = x;\n    return this;\n  }\n\n  lerp(v, t) {\n    this.x += (v.x - this.x) * t;\n    this.y += (v.y - this.y) * t;\n    return this;\n  }\n\n  length()       { return Math.sqrt(this.x * this.x + this.y * this.y); }\n  lengthSq()     { return this.x * this.x + this.y * this.y; }\n  dot(v)         { return this.x * v.x + this.y * v.y; }\n  cross(v)       { return this.x * v.y - this.y * v.x; }\n  distance(v)    { const dx = this.x-v.x, dy = this.y-v.y; return Math.sqrt(dx*dx+dy*dy); }\n  distanceSq(v)  { const dx = this.x-v.x, dy = this.y-v.y; return dx*dx+dy*dy; }\n  angle()        { return Math.atan2(this.y, this.x); }\n  equals(v, e=0) { return Math.abs(this.x-v.x)<=e && Math.abs(this.y-v.y)<=e; }\n  toString()     { return `Vector(${this.x}, ${this.y})`; }\n}\n```\n\nIn the next lesson we will use vectors as the foundation of our first engine class: the **SceneNode** transform."
+        },
+        {
+          "type": 2,
+          "text": "You have `const dir = target.clone().sub(obj.pos)`. To move `obj` toward `target` at exactly 200 px/s, what do you do next?",
+          "answers": [
+            { "text": "`dir.normalize().scale(200)`", "correct": true },
+            { "text": "`dir.scale(200)`", "correct": false },
+            { "text": "`dir.scale(200).normalize()`", "correct": false },
+            { "text": "`dir.length(200)`", "correct": false }
+          ]
+        },
+        {
+          "type": 2,
+          "text": "Two **unit** vectors have a dot product of `-0.5`. This means...",
+          "answers": [
+            { "text": "They point in roughly opposite directions (angle > 90°)", "correct": true },
+            { "text": "They are perpendicular", "correct": false },
+            { "text": "They point in the same direction", "correct": false },
+            { "text": "At least one of them is not a unit vector", "correct": false }
+          ]
+        },
+        {
+          "type": 4,
+          "text": "After calling `normalize()` on a non-zero vector, what is its length? (answer with a number)",
+          "correctAnswer": "1"
+        },
+        {
+          "type": 5,
+          "mode": 1
+        }
+      ]
+    },
+    {
+      "title": "Scenes & Scene Nodes",
+      "nodes": [
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## What Are Scenes?\n\nAs a game grows, managing its different states becomes a serious challenge. Without structure, you end up tracking mode with a pile of flags:\n\n```js\nlet inMenu = true, inGame = false, isPaused = false;\n\nfunction update(dt) {\n  if (inMenu) { /* ... */ }\n  else if (inGame && !isPaused) { /* ... */ }\n  // This spirals quickly\n}\n```\n\nA **scene** is a self-contained unit of game state. Each mode of your game is its own class:\n\n- `MenuScene` — title screen, settings\n- `GameScene` — the actual gameplay\n- `PauseScene` — an overlay while gameplay is frozen\n- `GameOverScene` — end screen, high score entry\n\n### The SceneManager\n\n`SceneManager` holds a registry of **init functions** — one per named scene. When you switch to a scene, it creates a fresh `Scene`, calls the registered init function to populate it with nodes, then starts the update loop. The previous scene is destroyed first if one is active.\n\n```js\nconst sm = new SceneManager();\n\nsm.register('menu', (scene) => {\n  scene.addNode(new TitleLogo());\n  scene.addNode(new StartButton());\n});\n\nsm.register('game', (scene, params) => {\n  scene.addNode(new Level(params.level));\n  scene.addNode(new Player());\n});\n\nsm.switchScene('menu');               // → creates Scene, runs init, starts loop\nsm.switchScene('game', { level: 1 }); // → destroys menu scene, starts game scene\n\n// In the game loop:\nfunction tick(dt) {\n  sm.update(dt);  // forwards dt to the current scene\n}\n```\n\n`Scene` itself is never extended or instantiated directly — it is always created and managed by `SceneManager`."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Setting Up a Scene\n\nA `Scene` is a plain container for nodes — you never extend or instantiate it. Instead, you provide an **init function** to `SceneManager.register()`. When `switchScene` is called, `SceneManager` creates a fresh `Scene`, passes it to your init function, and starts the loop:\n\n```js\nsm.register('game', (scene, params) => {\n  // Called once when this scene becomes active.\n  // Populate the scene with starting nodes using scene.addNode().\n  const player = new Player();\n  player.position.set(300, 400);\n  scene.addNode(player);\n\n  const enemy = new Enemy();\n  enemy.position.set(100, 100);\n  scene.addNode(enemy);\n});\n```\n\nThere is no `start()` or `destroy()` to override on `Scene` — it is just a bag of nodes. All game logic lives in the nodes themselves.\n\n### Adding and Removing Nodes Safely\n\nNodes can be added or removed *at any time*, including from inside another node's `update`. This is safe because of two internal queues:\n\n- **`pending`** — nodes added during a frame are staged here and only enter `nodes` at the start of the *next* tick. This prevents a newly added node from being updated on the same frame it was created.\n- **`pendingRemoval`** — nodes removed during a frame are staged here and fully destroyed at the start of the next tick. This prevents index-shifting bugs when splicing the live array mid-iteration.\n\n```js\n// Inside any SceneNode's update():\nif (this.hp <= 0) {\n  this.scene.removeNode(this);  // safe — deferred to next tick\n}\nif (this.canFire) {\n  this.scene.addNode(new Bullet(this.position.clone()));  // also safe\n}\n```"
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Scene Nodes — The Building Blocks\n\nEvery object in your scene **extends** `SceneNode`:\n\n```js\nclass Player extends SceneNode {\n  constructor(startPos) {\n    super();  // auto-assigns id, sets up transform\n    this.name = 'player';         // optional name for findNode()\n    this.position.copy(startPos); // place in world\n    this.speed = 200;\n  }\n\n  start() {\n    // Called once when node enters the scene.\n    // The node is fully live here — this.scene is set.\n  }\n\n  update(dt) {\n    // Called every frame. dt = delta time in seconds.\n    this.position.x += this.speed * dt;\n\n    if (this.position.x > 700) {\n      this.scene.removeNode(this);   // remove self\n    }\n  }\n\n  destroy() {\n    // Called when removed. Clean up event listeners, etc.\n  }\n}\n```\n\n### Nodes Can Talk to Each Other\n\nEvery node has a `scene` reference, so nodes can interact with their siblings:\n\n```js\n// Find a node by name:\nconst hud = this.scene.findNode('hud');\nhud.showDamageEffect();\n\n// Spawn a child:\nthis.scene.addNode(new Explosion(this.position.clone()));\n```\n\n### Auto-incrementing IDs\n\n`SceneNode._nextId` is incremented each time a node is constructed, so every node gets a unique numeric `id`. This is useful for debugging and for systems that need to track nodes by identity rather than name."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Transforms — Position, Rotation, Scale\n\nEvery `SceneNode` has a **transform**: three properties describing where it sits in space relative to its parent.\n\n```js\nconst node = new SceneNode();\n\n// Position — Vector — where is the node? (default: (0, 0))\nnode.position.set(100, 200);\n\n// Angle — number in radians — how is it rotated? (default: 0)\nnode.angle = Math.PI / 4;    // 45° clockwise\n\n// Scale — Vector — how is it stretched? (default: (1, 1))\nnode.scale.set(2, 1);        // twice as wide, normal height\n```\n\nAll three are **local space** — relative to the parent node. A node with no parent is in world space directly.\n\n### Transform ≠ Drawing\n\n`SceneNode` does not draw anything by itself. The transform just describes *where and how* the node exists in the scene graph. A renderer (which we will build later) reads these transforms to draw sprites, shapes, or whatever the node represents.\n\n### Connecting Vectors to Transforms\n\nThe Vector class you learned in the first two lessons is the foundation here:\n\n```js\n// Move a node along its facing direction each frame:\nconst facing = Vector.fromAngle(node.angle);\nnode.position.add(facing.scale(speed * dt));\n\n// Point a node toward a target:\nconst dir = target.clone().sub(node.position);\nnode.angle = dir.angle();\n```\n\nEvery vector concept — `add`, `normalize`, `scale`, `angle()`, `fromAngle()` — will appear in transform logic."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## The Scene Graph — Parent-Child Hierarchy\n\nNodes can be linked in a **tree** (the scene graph). A parent can have many children; each child has at most one parent.\n\n```js\nconst ship   = new SceneNode();\nconst turret = new SceneNode();\nconst barrel = new SceneNode();\n\nship.position.set(300, 200);\nturret.position.set(0, -25);   // 25px above ship center — LOCAL\nbarrel.position.set(0, -18);   // 18px above turret center — LOCAL\n\nturret.setParent(ship);    // turret is a child of ship\nbarrel.setParent(turret);  // barrel is a child of turret\n```\n\nWhen `ship` moves or rotates, `turret` and `barrel` follow — they are \"attached\" to the ship. Their *local* transforms do not change; only their *world* positions do.\n\n### Traversal\n\n`getWorldPosition()` walks the chain of parents to compute the absolute canvas position:\n\n```js\nship.angle = Math.PI / 2;              // rotate ship 90°\nconst wp = barrel.getWorldPosition();  // recalculated from the chain\n// The barrel has moved with the ship\n```\n\n### Use Cases\n\n| Hierarchy | Benefit |\n|-----------|--------------------|\n| Ship → Turret → Barrel | Barrel follows turret which follows ship |\n| Player → Camera | Camera stays attached to player |\n| Enemy → HealthBar | Health bar floats above enemy |\n| Car → Wheel × 4 | Wheels move with car body |"
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## World vs Local Space — and setParent in Depth\n\n### Local Space\n\n`node.position` is the node's position *relative to its parent*. It never changes unless you change it. When the parent moves, the child's local position stays the same — but its world position changes.\n\n### World Space\n\nWorld position is the absolute canvas coordinate. You get it by walking the parent chain:\n\n```js\nship.position.set(300, 200);    // ship at canvas (300, 200)\nturret.position.set(0, -25);    // turret local: 25px above ship\n\n// getWorldPosition() chains: ship(300,200) + turret(0,-25) = (300, 175)\nconst wp = turret.getWorldPosition();  // Vector(300, 175)\n\nship.position.x += 50;          // ship moves right\nturret.getWorldPosition();      // now Vector(350, 175)\n// turret.position is still (0, -25) — local unchanged\n```\n\nSame logic applies to angle (`getWorldAngle()`) and scale (`getWorldScale()`).\n\n### setParent(node, keepWorldPosition)\n\nBy default, `setParent` just links the parent — the node's local position is unchanged, which means it teleports in world space. Pass `true` as the second argument to recalculate the local transform so the node *stays where it is* in world space:\n\n```js\n// turret is at world (300, 175)\nturret.setParent(null);                   // detach — stays at local (0, -25), world (0, -25)\nturret.setParent(null, true);             // detach — local recalculated, world stays (300, 175)\nturret.setParent(otherShip, true);        // reparent — stays at world (300, 175)\n```\n\nThe `keepWorldPosition = true` flag is indispensable any time you reparent a node mid-game without wanting it to jump."
+        },
+        {
+          "type": 2,
+          "text": "In a `SceneNode`, what does `node.position` represent?",
+          "answers": [
+            { "text": "The node's position in local space, relative to its parent", "correct": true },
+            { "text": "The node's absolute position on the canvas", "correct": false },
+            { "text": "The parent node's world position", "correct": false },
+            { "text": "The velocity of the node", "correct": false }
+          ]
+        },
+        {
+          "type": 2,
+          "text": "A `turret` node is a child of `ship`. The turret's local position is `(0, -25)`. You then set `ship.angle = Math.PI / 2`. What happens to `turret.position`?",
+          "answers": [
+            { "text": "It stays `(0, -25)` — local position is unchanged", "correct": true },
+            { "text": "It becomes `(25, 0)` — rotated with the ship", "correct": false },
+            { "text": "It is reset to `(0, 0)`", "correct": false },
+            { "text": "It matches the ship's world position", "correct": false }
+          ]
+        },
+        {
+          "type": 4,
+          "text": "What method of `Scene` do you call to safely add a `SceneNode` to a running scene?",
+          "correctAnswer": "addNode"
+        },
+        {
+          "type": 5,
+          "mode": 1
+        }
+      ]
+    }
+  ]
+}
