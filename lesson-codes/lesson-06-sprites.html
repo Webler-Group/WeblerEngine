@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 6 — Sprites | Build a 2D Engine</title>
+  <style>
+    :root {
+      --bg: #0f0f1e; --panel: #181828; --border: #2a2a45;
+      --accent: #4cc9f0; --green: #4ade80; --pink: #f72585;
+      --yellow: #fbbf24; --purple: #a78bfa; --orange: #fb923c;
+      --text: #cdd6f4; --muted: #6b7280;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Consolas', 'Courier New', monospace; padding: 24px; }
+    header { margin-bottom: 20px; }
+    header h1 { color: var(--accent); font-size: 1.3rem; margin-bottom: 4px; }
+    header p  { color: var(--muted); font-size: 0.82rem; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+    .tab { padding: 7px 14px; background: var(--panel); border: 1px solid var(--border); color: var(--muted); cursor: pointer; border-radius: 5px; font-family: inherit; font-size: 0.8rem; transition: border-color 0.15s, color 0.15s; }
+    .tab:hover  { color: var(--text); border-color: var(--accent); }
+    .tab.active { color: var(--accent); border-color: var(--accent); background: #141428; }
+    .demo-area { display: flex; gap: 14px; align-items: flex-start; }
+    canvas { border: 1px solid var(--border); border-radius: 6px; background: #08080f; display: block; width: 100%; max-width: 560px; height: auto; }
+    .info { width: 260px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 16px; min-height: 420px; }
+    .info h3 { color: var(--accent); font-size: 0.85rem; margin-bottom: 10px; }
+    .info p   { color: var(--muted); font-size: 0.78rem; line-height: 1.65; margin-bottom: 10px; }
+    .val-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 0.76rem; }
+    .val-row:last-of-type { border-bottom: none; }
+    .val-label { color: var(--muted); }
+    .val-num   { color: var(--green); font-weight: bold; }
+    .val-num.yellow { color: var(--yellow); }
+    .val-num.pink   { color: var(--pink); }
+    .val-num.accent { color: var(--accent); }
+    .code-block { margin-top: 12px; background: #08080f; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 4px; padding: 10px 12px; font-size: 0.72rem; color: #a5b4fc; line-height: 1.7; white-space: pre; overflow-x: auto; }
+    .btn { display: inline-block; padding: 6px 12px; background: var(--panel); border: 1px solid var(--border); color: var(--text); cursor: pointer; border-radius: 4px; font-family: inherit; font-size: 0.76rem; margin-top: 8px; margin-right: 4px; transition: border-color 0.15s; }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    @media (max-width: 740px) { body { padding: 12px; } .demo-area { flex-direction: column; } .info { width: 100%; min-height: auto; } .tab { padding: 6px 10px; font-size: 0.75rem; } }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>Lesson 6 — Sprites</h1>
+    <p>Two interactive demos: <code>Spritesheet</code> &amp; <code>Sprite</code> (atlas frame picking), and <code>Animation</code> &amp; <code>Animator</code> with events.</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="setDemo(0)">1. Spritesheet &amp; Sprite</button>
+    <button class="tab"        onclick="setDemo(1)">2. Animation &amp; Animator</button>
+  </div>
+
+  <div class="demo-area">
+    <canvas id="canvas" width="560" height="420"></canvas>
+
+    <!-- Panel 0 -->
+    <div class="info" id="panel-0">
+      <h3>Spritesheet &amp; Sprite</h3>
+      <p><code>Spritesheet</code> maps a frame index to a source rect on the atlas. <code>Sprite</code> renders that rect via <code>drawImage</code>, centered at (0,&nbsp;0) in local space.</p>
+      <div class="val-row"><span class="val-label">frame</span><span class="val-num yellow" id="d0-frame">0</span></div>
+      <div class="val-row"><span class="val-label">region x</span><span class="val-num" id="d0-rx">—</span></div>
+      <div class="val-row"><span class="val-label">region y</span><span class="val-num" id="d0-ry">—</span></div>
+      <div class="val-row"><span class="val-label">region w</span><span class="val-num" id="d0-rw">—</span></div>
+      <div class="val-row"><span class="val-label">region h</span><span class="val-num" id="d0-rh">—</span></div>
+      <div style="margin-top:10px;display:flex;gap:6px">
+        <button class="btn" onclick="stepFrame(-1)">&#9664; Prev</button>
+        <button class="btn" onclick="stepFrame(1)">Next &#9654;</button>
+      </div>
+      <div class="code-block">const sheet = new Spritesheet({
+  image,
+  spriteWidth:  80,
+  spriteHeight: 80,
+  columns: 3,
+  count:   6,
+});
+
+const sprite = new Sprite({ sheet });
+sprite.region = sheet.getRegion(2);</div>
+    </div>
+
+    <!-- Panel 1 -->
+    <div class="info" id="panel-1" style="display:none">
+      <h3>Animation &amp; Animator</h3>
+      <p><code>Animator</code> advances a <code>Sprite</code>'s region each tick. <code>isPlaying(name)</code> prevents redundant restarts. Non-looping animations emit <code>'end'</code>.</p>
+      <div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">WALKER <span style="color:#4cc9f0">■</span></div>
+      <div class="val-row"><span class="val-label">isPlaying('walk')</span><span class="val-num accent" id="d1-walker-state">—</span></div>
+      <div style="font-size:0.72rem;color:var(--muted);margin:6px 0 4px">ATTACKER <span style="color:#f72585">■</span></div>
+      <div class="val-row"><span class="val-label">isPlaying('walk')</span><span class="val-num" id="d1-atk-walk">—</span></div>
+      <div class="val-row"><span class="val-label">isPlaying('attack')</span><span class="val-num pink" id="d1-atk-attack">—</span></div>
+      <div style="margin:8px 0 4px;font-size:0.72rem;color:var(--muted)">EVENT LOG</div>
+      <div id="d1-log" style="font-size:0.72rem;line-height:2;min-height:64px"></div>
+      <button class="btn" onclick="triggerAttack()">Play attack</button>
+      <div class="code-block">animator.on('end', (e) => {
+  animator.play(walkAnim);
+});
+
+animator.play(attackAnim);</div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // Vector (from src/utils.js)
+    // =========================================================================
+    class Vector {
+      constructor(x = 0, y = 0) { this.x = x; this.y = y; }
+      static zero()         { return new Vector(0, 0); }
+      static one()          { return new Vector(1, 1); }
+      static from(v)        { return new Vector(v.x, v.y); }
+      static fromAngle(rad) { return new Vector(Math.cos(rad), Math.sin(rad)); }
+      set(x, y)   { this.x = x; this.y = y; return this; }
+      copy(v)     { this.x = v.x; this.y = v.y; return this; }
+      clone()     { return new Vector(this.x, this.y); }
+      add(v)      { this.x += v.x; this.y += v.y; return this; }
+      sub(v)      { this.x -= v.x; this.y -= v.y; return this; }
+      mul(v)      { this.x *= v.x; this.y *= v.y; return this; }
+      div(v)      { this.x /= v.x; this.y /= v.y; return this; }
+      scale(s)    { this.x *= s;   this.y *= s;   return this; }
+      negate()    { this.x = -this.x; this.y = -this.y; return this; }
+      normalize() { const l = this.length(); if (l > 0) { this.x /= l; this.y /= l; } return this; }
+      rotate(rad) { const c = Math.cos(rad), s = Math.sin(rad), nx = this.x * c - this.y * s; this.y = this.x * s + this.y * c; this.x = nx; return this; }
+      lerp(v, t)  { this.x += (v.x - this.x) * t; this.y += (v.y - this.y) * t; return this; }
+      length()    { return Math.sqrt(this.x * this.x + this.y * this.y); }
+      dot(v)      { return this.x * v.x + this.y * v.y; }
+      distance(v) { const dx = this.x - v.x, dy = this.y - v.y; return Math.sqrt(dx * dx + dy * dy); }
+      angle()     { return Math.atan2(this.y, this.x); }
+      toString()  { return `Vector(${this.x.toFixed(2)}, ${this.y.toFixed(2)})`; }
+    }
+
+    // =========================================================================
+    // SceneNode with event system (from src/core.js)
+    // =========================================================================
+    class SceneNode {
+      static _nextId = 0;
+      constructor() {
+        this.id = SceneNode._nextId++;
+        this.name = `node_${this.id}`;
+        this.scene = null;
+        this.position = Vector.zero();
+        this.angle = 0;
+        this.scale = Vector.one();
+        this.parent = null;
+        this._listeners = new Map();
+      }
+      setParent(node, keep = false) {
+        if (keep) {
+          const wp = this.getWorldPosition(), wa = this.getWorldAngle(), ws = this.getWorldScale();
+          this.parent = node;
+          this.setWorldPosition(wp); this.setWorldAngle(wa); this.setWorldScale(ws);
+        } else { this.parent = node; }
+      }
+      getWorldPosition() {
+        if (!this.parent) return this.position.clone();
+        const p = this.parent.getWorldPosition(), pa = this.parent.getWorldAngle(), ps = this.parent.getWorldScale();
+        return p.add(this.position.clone().mul(ps).rotate(pa));
+      }
+      setWorldPosition(w) {
+        if (!this.parent) { this.position.set(w.x, w.y); return; }
+        const p = this.parent.getWorldPosition(), pa = this.parent.getWorldAngle(), ps = this.parent.getWorldScale();
+        this.position.copy(w.sub(p).rotate(-pa).div(ps));
+      }
+      getWorldAngle() { return this.parent ? this.parent.getWorldAngle() + this.angle : this.angle; }
+      setWorldAngle(wa) { this.angle = this.parent ? wa - this.parent.getWorldAngle() : wa; }
+      getWorldScale() { return this.parent ? this.parent.getWorldScale().mul(this.scale) : this.scale.clone(); }
+      setWorldScale(ws) { this.scale.copy(this.parent ? ws.clone().div(this.parent.getWorldScale()) : ws.clone()); }
+      on(type, handler) {
+        if (!this._listeners.has(type)) this._listeners.set(type, new Set());
+        this._listeners.get(type).add(handler);
+      }
+      once(type, handler) { const w = e => { this.off(type, w); handler(e); }; this.on(type, w); }
+      off(type, handler)  { this._listeners.get(type)?.delete(handler); }
+      emit(type, data) {
+        const ls = this._listeners.get(type);
+        if (!ls) return;
+        const ev = { type, data, target: this };
+        for (const h of [...ls]) h(ev);
+      }
+      start()   {}
+      update(dt){}
+      destroy() { this._listeners.clear(); }
+    }
+
+    // =========================================================================
+    // Scene (from src/core.js)
+    // =========================================================================
+    class Scene {
+      constructor() { this.nodes = []; this.pending = []; this.pendingRemoval = []; this.running = false; }
+      addNode(node) {
+        node.scene = this;
+        if (this.running) { this.pending.push(node); }
+        else { this.nodes.push(node); node.start(); }
+      }
+      removeNode(node) {
+        const pi = this.pending.indexOf(node);
+        if (pi !== -1) { this.pending.splice(pi, 1); node.destroy(); node.scene = null; return; }
+        if (this.running) { this.pendingRemoval.push(node); }
+        else { const i = this.nodes.indexOf(node); if (i !== -1) { this.nodes.splice(i, 1); node.destroy(); node.scene = null; } }
+      }
+      findNode(name)     { return this.nodes.find(n => n.name === name) ?? null; }
+      findNodesByType(T) { return this.nodes.filter(n => n instanceof T); }
+      start()    { this.running = true; }
+      update(dt) {
+        if (this.pendingRemoval.length > 0) {
+          for (const n of this.pendingRemoval) { const i = this.nodes.indexOf(n); if (i !== -1) this.nodes.splice(i, 1); n.destroy(); n.scene = null; }
+          this.pendingRemoval = [];
+        }
+        if (this.pending.length > 0) {
+          for (const n of this.pending) { this.nodes.push(n); n.start(); }
+          this.pending = [];
+        }
+        for (const n of this.nodes) n.update(dt);
+      }
+      destroy() { this.running = false; }
+    }
+
+    // =========================================================================
+    // SceneManager (from src/core.js)
+    // =========================================================================
+    class SceneManager {
+      constructor() { this.registry = new Map(); this.currentScene = null; }
+      register(name, init) { this.registry.set(name, init); }
+      update(dt) { if (this.currentScene) this.currentScene.update(dt); }
+      switchScene(name, params = {}) {
+        const init = this.registry.get(name);
+        if (!init) throw new Error(`SceneManager: Unknown scene "${name}"`);
+        if (this.currentScene) this.currentScene.destroy();
+        const scene = new Scene();
+        init(scene, params);
+        scene.start();
+        this.currentScene = scene;
+      }
+    }
+
+    // =========================================================================
+    // Drawable (from src/graphics.js)
+    // =========================================================================
+    class Drawable extends SceneNode {
+      constructor(params = {}) { super(); this.zIndex = params.zIndex ?? 0; }
+      draw(ctx) {}
+    }
+
+    // =========================================================================
+    // Renderer (from src/graphics.js)
+    // =========================================================================
+    class Renderer {
+      constructor(canvas) { this.canvas = canvas; this.ctx = canvas.getContext('2d'); this.clearColor = '#000000'; }
+      render(drawables) {
+        if (this.clearColor !== null) { this.ctx.fillStyle = this.clearColor; this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height); }
+        const layers = new Map();
+        for (const d of drawables) {
+          const key = `${d.zIndex}`;
+          if (!layers.has(key)) layers.set(key, { zIndex: d.zIndex, drawables: [] });
+          layers.get(key).drawables.push(d);
+        }
+        for (const layer of [...layers.values()].sort((a, b) => a.zIndex - b.zIndex)) {
+          for (const d of layer.drawables) { this.ctx.setTransform(this._computeMatrix(d)); d.draw(this.ctx); }
+        }
+        this.ctx.resetTransform();
+      }
+      _computeMatrix(d) {
+        const pos = d.getWorldPosition(), angle = d.getWorldAngle(), scale = d.getWorldScale();
+        const cos = Math.cos(angle), sin = Math.sin(angle);
+        return new DOMMatrix([scale.x * cos, scale.x * sin, -scale.y * sin, scale.y * cos, pos.x, pos.y]);
+      }
+    }
+
+    // =========================================================================
+    // Spritesheet (from src/graphics.js)
+    // =========================================================================
+    class Spritesheet {
+      constructor(params) {
+        this.image        = params.image;
+        this.spriteWidth  = params.spriteWidth;
+        this.spriteHeight = params.spriteHeight;
+        this.columns      = params.columns;
+        this.count        = params.count;
+        this.margin       = params.margin  ?? 0;
+        this.spacing      = params.spacing ?? 0;
+      }
+      getRegion(frame) {
+        const col = frame % this.columns;
+        const row = Math.floor(frame / this.columns);
+        return {
+          x:      this.margin + col * (this.spriteWidth  + this.spacing),
+          y:      this.margin + row * (this.spriteHeight + this.spacing),
+          width:  this.spriteWidth,
+          height: this.spriteHeight,
+        };
+      }
+    }
+
+    // =========================================================================
+    // Sprite (from src/graphics.js)
+    // =========================================================================
+    class Sprite extends Drawable {
+      constructor(params) {
+        super(params);
+        this.sheet  = params.sheet;
+        this.region = params.region ?? params.sheet.getRegion(0);
+      }
+      draw(ctx) {
+        const r = this.region;
+        ctx.drawImage(this.sheet.image, r.x, r.y, r.width, r.height, -r.width / 2, -r.height / 2, r.width, r.height);
+      }
+    }
+
+    // =========================================================================
+    // Animator (from src/graphics.js)
+    // =========================================================================
+    class Animator extends SceneNode {
+      constructor(sprite) {
+        super();
+        this.sprite = sprite;
+        this._anim  = null;
+        this._t     = 0;
+      }
+      play(animation) {
+        this._anim = animation;
+        this._t    = 0;
+        this.emit('start', { animation });
+      }
+      isPlaying(name) { return this._anim !== null && this._anim.name === name; }
+      update(dt) {
+        if (!this._anim) return;
+        this._t += dt;
+        const { frames, frameDuration, loop = true } = this._anim;
+        let index = Math.floor(this._t * 1000 / frameDuration);
+        if (loop) {
+          index = index % frames.length;
+        } else if (index >= frames.length) {
+          this.sprite.region = frames[frames.length - 1];
+          const anim = this._anim;
+          this._anim = null;
+          this.emit('end', { animation: anim });
+          return;
+        }
+        this.sprite.region = frames[index];
+      }
+    }
+
+    // =========================================================================
+    // loadImage (from src/utils.js) — included for reference; demo uses a
+    // canvas-generated atlas so no network request is needed here.
+    // =========================================================================
+    const loadImage = (url) => new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = url;
+      img.onload  = () => resolve(img);
+      img.onerror = () => reject('Failed to load image: ' + url);
+    });
+
+    // =========================================================================
+    // Atlas generation — programmatic spritesheet (HTMLCanvasElement as image)
+    //
+    // Row 0 (frames 0-2): walk cycle   — blue stick figure, legs alternating
+    // Row 1 (frames 3-5): attack cycle — pink stick figure, arm swinging
+    // =========================================================================
+    const FW = 80, FH = 80, ATLAS_COLS = 3;
+
+    function drawStick(g, cx, cy, legR, legL, armR, armL, color) {
+      g.strokeStyle = color;
+      g.lineWidth   = 3;
+      g.lineCap     = 'round';
+      const HL = 18, HA = 16;
+      // Head
+      g.beginPath(); g.arc(cx, cy - 22, 9, 0, Math.PI * 2); g.stroke();
+      // Body
+      g.beginPath(); g.moveTo(cx, cy - 13); g.lineTo(cx, cy + 6); g.stroke();
+      // Arms (from shoulder at cy-8)
+      g.beginPath(); g.moveTo(cx, cy - 8);
+      g.lineTo(cx + Math.sin(armR) * HA, cy - 8 - Math.cos(armR) * HA); g.stroke();
+      g.beginPath(); g.moveTo(cx, cy - 8);
+      g.lineTo(cx - Math.sin(armL) * HA, cy - 8 - Math.cos(armL) * HA); g.stroke();
+      // Legs (from hip at cy+6)
+      g.beginPath(); g.moveTo(cx, cy + 6);
+      g.lineTo(cx + Math.sin(legR) * HL, cy + 6 + Math.cos(legR) * HL); g.stroke();
+      g.beginPath(); g.moveTo(cx, cy + 6);
+      g.lineTo(cx - Math.sin(legL) * HL, cy + 6 + Math.cos(legL) * HL); g.stroke();
+    }
+
+    function buildAtlas() {
+      const ac = document.createElement('canvas');
+      ac.width = FW * ATLAS_COLS; ac.height = FH * 2;
+      const ag = ac.getContext('2d');
+      ag.fillStyle = '#0a0a18';
+      ag.fillRect(0, 0, ac.width, ac.height);
+
+      // Walk frames — [legR, legL, armR, armL]
+      const walkPoses = [
+        [ 0.5, -0.5,  0.35, -0.35],
+        [ 0.0,  0.0,  0.0,   0.0 ],
+        [-0.5,  0.5, -0.35,  0.35],
+      ];
+      walkPoses.forEach(([lr, ll, ar, al], i) => {
+        drawStick(ag, i * FW + FW / 2, FH / 2 + 8, lr, ll, ar, al, '#4cc9f0');
+      });
+
+      // Attack frames
+      const attackPoses = [
+        [ 0.2, -0.2,  0.25,  0.25],
+        [ 0.2, -0.2,  1.35,  0.25],
+        [ 0.2, -0.2, -0.5,   0.25],
+      ];
+      attackPoses.forEach(([lr, ll, ar, al], i) => {
+        drawStick(ag, i * FW + FW / 2, FH + FH / 2 + 8, lr, ll, ar, al, '#f72585');
+      });
+
+      return ac;
+    }
+
+    const atlasCanvas = buildAtlas();
+    const sheet = new Spritesheet({
+      image: atlasCanvas, spriteWidth: FW, spriteHeight: FH,
+      columns: ATLAS_COLS, count: 6,
+    });
+
+    const walkAnim = {
+      name: 'walk',
+      frames: [0, 1, 2].map(i => sheet.getRegion(i)),
+      frameDuration: 180,
+      loop: true,
+    };
+    const attackAnim = {
+      name: 'attack',
+      frames: [3, 4, 5].map(i => sheet.getRegion(i)),
+      frameDuration: 120,
+      loop: false,
+    };
+
+    // =========================================================================
+    // Canvas / renderer setup
+    // =========================================================================
+    const canvas   = document.getElementById('canvas');
+    const renderer = new Renderer(canvas);
+    renderer.clearColor = '#08080f';
+    const ctx = renderer.ctx;
+    const W = canvas.width, H = canvas.height;
+
+    // =========================================================================
+    // DEMO 0 — Spritesheet & Sprite
+    // Left: atlas HUD with highlighted current frame
+    // Right: Sprite node rendered at 3× scale via Renderer
+    // =========================================================================
+    const sm0   = new SceneManager();
+    let frame0  = 0;
+    let sprite0;
+
+    sm0.register('sprites', (scene) => {
+      sprite0 = new Sprite({ sheet, zIndex: 0 });
+      sprite0.name = 'preview';
+      sprite0.position.set(430, H / 2);
+      sprite0.scale.set(3, 3);
+      scene.addNode(sprite0);
+    });
+    sm0.switchScene('sprites');
+
+    function stepFrame(delta) {
+      frame0 = ((frame0 + delta) % 6 + 6) % 6;
+      sprite0.region = sheet.getRegion(frame0);
+    }
+
+    function drawAtlasHud() {
+      const S  = 1.0;  // draw at native scale
+      const ox = 14, oy = (H - FH * 2 * S) / 2;
+      const cw = FW * S, ch = FH * S;
+      const aw = FW * ATLAS_COLS * S, ah = FH * 2 * S;
+
+      // Background panel
+      ctx.fillStyle = '#0a0a1a';
+      ctx.fillRect(ox - 3, oy - 18, aw + 6, ah + 22);
+      ctx.strokeStyle = '#2a2a45';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(ox - 3, oy - 18, aw + 6, ah + 22);
+
+      // Label
+      ctx.font = '9px Consolas, monospace';
+      ctx.fillStyle = '#6b7280';
+      ctx.textAlign = 'left';
+      ctx.fillText('SOURCE ATLAS', ox, oy - 6);
+
+      // Atlas image
+      ctx.drawImage(atlasCanvas, ox, oy, aw, ah);
+
+      // Grid lines
+      ctx.strokeStyle = '#2a2a4590';
+      ctx.lineWidth = 1;
+      for (let c = 0; c <= ATLAS_COLS; c++) {
+        ctx.beginPath(); ctx.moveTo(ox + c * cw, oy); ctx.lineTo(ox + c * cw, oy + ah); ctx.stroke();
+      }
+      for (let r = 0; r <= 2; r++) {
+        ctx.beginPath(); ctx.moveTo(ox, oy + r * ch); ctx.lineTo(ox + aw, oy + r * ch); ctx.stroke();
+      }
+
+      // Frame index labels
+      ctx.font = '9px Consolas, monospace';
+      ctx.textAlign = 'left';
+      for (let i = 0; i < 6; i++) {
+        const col = i % ATLAS_COLS, row = Math.floor(i / ATLAS_COLS);
+        ctx.fillStyle = row === 0 ? '#4cc9f060' : '#f7258560';
+        ctx.fillText(i, ox + col * cw + 4, oy + row * ch + 12);
+      }
+
+      // Highlight box around current frame
+      const hcol = frame0 % ATLAS_COLS, hrow = Math.floor(frame0 / ATLAS_COLS);
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(ox + hcol * cw + 1, oy + hrow * ch + 1, cw - 2, ch - 2);
+
+      // Row labels
+      ctx.font = '9px Consolas, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#4cc9f060';
+      ctx.fillText('walk', ox + aw + 5, oy + ch / 2 + 3);
+      ctx.fillStyle = '#f7258560';
+      ctx.fillText('attack', ox + aw + 5, oy + ch * 1.5 + 3);
+
+      // Preview label
+      ctx.fillStyle = '#6b7280';
+      ctx.textAlign = 'center';
+      ctx.fillText('PREVIEW (3×)', 430, oy - 6);
+      ctx.textAlign = 'left';
+    }
+
+    function updateDemo0(dt) {
+      sm0.update(dt);
+      renderer.render(sm0.currentScene.findNodesByType(Drawable));
+      drawAtlasHud();
+
+      const r = sprite0.region;
+      document.getElementById('d0-frame').textContent = frame0;
+      document.getElementById('d0-rx').textContent    = r.x;
+      document.getElementById('d0-ry').textContent    = r.y;
+      document.getElementById('d0-rw').textContent    = r.width;
+      document.getElementById('d0-rh').textContent    = r.height;
+    }
+
+    // =========================================================================
+    // DEMO 1 — Animation & Animator
+    // Walker: loops walk animation.
+    // Attacker: walks by default; press button to trigger non-looping attack,
+    //           which auto-returns to walk via the 'end' event.
+    // =========================================================================
+    const sm1 = new SceneManager();
+    let anim1Walker, anim1Attacker;
+    const eventLog = [];
+
+    function addLog(type, animName, who) {
+      const isStart = type === 'start';
+      const sym   = isStart ? '&#9654;' : '&#9632;';
+      const color = isStart ? '#4ade80' : '#f72585';
+      const nameColor = animName === 'walk' ? '#4cc9f0' : '#f72585';
+      eventLog.push(
+        `<span style="color:${color}">${sym}</span> ` +
+        `<span style="color:#6b7280">${who}</span> ` +
+        `'${type}' <span style="color:${nameColor}">${animName}</span>`
+      );
+      if (eventLog.length > 4) eventLog.shift();
+      document.getElementById('d1-log').innerHTML = eventLog.map(l => `<div>${l}</div>`).join('');
+    }
+
+    sm1.register('animDemo', (scene) => {
+      // Walker
+      const walkerSprite = new Sprite({ sheet, zIndex: 0 });
+      walkerSprite.name = 'walkerSprite';
+      walkerSprite.position.set(140, H / 2);
+      walkerSprite.scale.set(2.5, 2.5);
+      scene.addNode(walkerSprite);
+
+      anim1Walker = new Animator(walkerSprite);
+      anim1Walker.name = 'walkerAnim';
+      anim1Walker.on('start', (e) => addLog('start', e.data.animation.name, 'walker'));
+      scene.addNode(anim1Walker);
+      anim1Walker.play(walkAnim);
+
+      // Attacker
+      const atkSprite = new Sprite({ sheet, zIndex: 0 });
+      atkSprite.name = 'atkSprite';
+      atkSprite.position.set(420, H / 2);
+      atkSprite.scale.set(2.5, 2.5);
+      scene.addNode(atkSprite);
+
+      anim1Attacker = new Animator(atkSprite);
+      anim1Attacker.name = 'atkAnim';
+      anim1Attacker.on('start', (e) => addLog('start', e.data.animation.name, 'attacker'));
+      anim1Attacker.on('end',   (e) => {
+        addLog('end', e.data.animation.name, 'attacker');
+        anim1Attacker.play(walkAnim);
+      });
+      scene.addNode(anim1Attacker);
+      anim1Attacker.play(walkAnim);
+    });
+    sm1.switchScene('animDemo');
+
+    function triggerAttack() {
+      if (!anim1Attacker.isPlaying('attack')) {
+        anim1Attacker.play(attackAnim);
+      }
+    }
+
+    function updateDemo1(dt) {
+      sm1.update(dt);
+      renderer.render(sm1.currentScene.findNodesByType(Drawable));
+
+      // Labels
+      ctx.font = '11px Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#4cc9f0';
+      ctx.fillText('walker', 140, H / 2 + 65);
+      ctx.fillStyle = '#f72585';
+      ctx.fillText('attacker', 420, H / 2 + 65);
+      ctx.textAlign = 'left';
+
+      document.getElementById('d1-walker-state').textContent = anim1Walker.isPlaying('walk')    ? 'true' : 'false';
+      document.getElementById('d1-atk-walk').textContent     = anim1Attacker.isPlaying('walk')   ? 'true' : 'false';
+      document.getElementById('d1-atk-attack').textContent   = anim1Attacker.isPlaying('attack') ? 'true' : 'false';
+    }
+
+    // =========================================================================
+    // Main loop
+    // =========================================================================
+    const demos = [updateDemo0, updateDemo1];
+    let currentDemo = 0;
+
+    function setDemo(i) {
+      currentDemo = i;
+      document.querySelectorAll('.tab').forEach((t, idx) => t.classList.toggle('active', idx === i));
+      document.querySelectorAll('.info').forEach((p, idx) => p.style.display = idx === i ? '' : 'none');
+    }
+
+    let lastTime = 0;
+    function loop(timestamp) {
+      const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+      lastTime = timestamp;
+      demos[currentDemo](dt);
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+  </script>
+
+</body>
+</html>

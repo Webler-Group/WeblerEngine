@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 4 — Graphics | Build a 2D Engine</title>
+  <style>
+    :root {
+      --bg: #0f0f1e;
+      --panel: #181828;
+      --border: #2a2a45;
+      --accent: #4cc9f0;
+      --green: #4ade80;
+      --pink: #f72585;
+      --yellow: #fbbf24;
+      --purple: #a78bfa;
+      --orange: #fb923c;
+      --text: #cdd6f4;
+      --muted: #6b7280;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Consolas', 'Courier New', monospace;
+      padding: 24px;
+    }
+
+    header { margin-bottom: 20px; }
+    header h1 { color: var(--accent); font-size: 1.3rem; margin-bottom: 4px; }
+    header p  { color: var(--muted); font-size: 0.82rem; }
+
+    .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+
+    .tab {
+      padding: 7px 14px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 5px;
+      font-family: inherit;
+      font-size: 0.8rem;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .tab:hover  { color: var(--text); border-color: var(--accent); }
+    .tab.active { color: var(--accent); border-color: var(--accent); background: #141428; }
+
+    .demo-area { display: flex; gap: 14px; align-items: flex-start; }
+
+    canvas {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #08080f;
+      cursor: crosshair;
+      display: block;
+      width: 100%;
+      max-width: 560px;
+      height: auto;
+    }
+
+    .info {
+      width: 260px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      min-height: 420px;
+    }
+
+    .info h3 { color: var(--accent); font-size: 0.85rem; margin-bottom: 10px; }
+    .info p   { color: var(--muted); font-size: 0.78rem; line-height: 1.65; margin-bottom: 10px; }
+
+    .val-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.76rem;
+    }
+    .val-row:last-of-type { border-bottom: none; }
+    .val-label { color: var(--muted); }
+    .val-num   { color: var(--green); font-weight: bold; }
+    .val-num.purple { color: var(--purple); }
+    .val-num.yellow { color: var(--yellow); }
+    .val-num.pink   { color: var(--pink); }
+    .val-num.accent { color: var(--accent); }
+    .val-num.orange { color: var(--orange); }
+
+    .code-block {
+      margin-top: 12px;
+      background: #08080f;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+      padding: 10px 12px;
+      font-size: 0.72rem;
+      color: #a5b4fc;
+      line-height: 1.7;
+      white-space: pre;
+      overflow-x: auto;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 6px 12px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      cursor: pointer;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.76rem;
+      margin-top: 8px;
+      margin-right: 4px;
+      transition: border-color 0.15s;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    @media (max-width: 740px) {
+      body { padding: 12px; }
+      .demo-area { flex-direction: column; }
+      .info { width: 100%; min-height: auto; }
+      .tab { padding: 6px 10px; font-size: 0.75rem; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>Lesson 4 — Graphics</h1>
+    <p>Four interactive demos using <code>Drawable</code>, <code>RectDrawable</code>, <code>CircleDrawable</code>, and <code>Renderer</code> from <code>src/graphics.js</code>. Touch supported.</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="setDemo(0)">1. Shapes</button>
+    <button class="tab"        onclick="setDemo(1)">2. z-Index</button>
+    <button class="tab"        onclick="setDemo(2)">3. Hierarchy</button>
+    <button class="tab"        onclick="setDemo(3)">4. Animation</button>
+  </div>
+
+  <div class="demo-area">
+    <canvas id="canvas" width="560" height="420"></canvas>
+
+    <!-- Panel 0: Shapes & Renderer -->
+    <div class="info" id="panel-0">
+      <h3>Shapes &amp; Renderer</h3>
+      <p><b>Click / tap</b> a shape to inspect it. Renderer applies each node's world transform before calling <code>draw(ctx)</code> — subclasses draw at (0,&nbsp;0) in local space.</p>
+      <div style="font-size:0.76rem;color:var(--accent);margin-bottom:8px">Selected: <b id="d0-selected-name">—</b></div>
+      <div class="val-row"><span class="val-label">type</span><span class="val-num accent" id="d0-type">—</span></div>
+      <div class="val-row"><span class="val-label">size</span><span class="val-num" id="d0-size">—</span></div>
+      <div class="val-row"><span class="val-label">position</span><span class="val-num" id="d0-pos">—</span></div>
+      <div class="val-row"><span class="val-label">angle</span><span class="val-num" id="d0-angle">—</span></div>
+      <div class="val-row"><span class="val-label">scale</span><span class="val-num" id="d0-scale">—</span></div>
+      <div class="val-row"><span class="val-label">zIndex</span><span class="val-num yellow" id="d0-zindex">—</span></div>
+      <div class="code-block">// draw() receives an already-
+// transformed context. Draw at (0,0):
+class MyRect extends RectDrawable {
+  draw(ctx) {
+    super.draw(ctx);      // base shape
+    // Add a label, centered:
+    ctx.resetTransform(); // upright text
+    const wp = this.getWorldPosition();
+    ctx.fillText(this.name, wp.x, wp.y);
+  }
+}</div>
+    </div>
+
+    <!-- Panel 1: z-Index Layering -->
+    <div class="info" id="panel-1" style="display:none">
+      <h3>z-Index Layering</h3>
+      <p><b>Click / tap</b> a circle to bring it in front of all others. Draw order (bottom → top):</p>
+      <div id="z-rows-container">
+        <div class="val-row" id="z-row-0"><span class="val-label" style="color:#4cc9f0">Blue</span><span class="val-num yellow" id="z-val-0">z = 0</span></div>
+        <div class="val-row" id="z-row-1"><span class="val-label" style="color:#4ade80">Green</span><span class="val-num yellow" id="z-val-1">z = 1</span></div>
+        <div class="val-row" id="z-row-2"><span class="val-label" style="color:#f72585">Pink</span><span class="val-num yellow" id="z-val-2">z = 2</span></div>
+        <div class="val-row" id="z-row-3"><span class="val-label" style="color:#a78bfa">Purple</span><span class="val-num yellow" id="z-val-3">z = 3</span></div>
+      </div>
+      <button class="btn" onclick="resetZIndex()">Reset</button>
+      <div class="code-block">// zIndex set at construction:
+const bg = new RectDrawable({
+  zIndex: 0  // drawn first (behind)
+});
+const fg = new CircleDrawable({
+  zIndex: 1  // drawn on top
+});
+
+// Changed at any time:
+node.zIndex = maxZ + 1;</div>
+    </div>
+
+    <!-- Panel 2: Hierarchy Rendering -->
+    <div class="info" id="panel-2" style="display:none">
+      <h3>Hierarchy Rendering</h3>
+      <p>Move mouse / touch to aim the ship. The turret oscillates in its own local space. Renderer calls <code>getWorldPosition()</code> on every Drawable — the parent chain is walked automatically.</p>
+      <div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">SHIP <span style="color:#4cc9f0">■</span></div>
+      <div class="val-row"><span class="val-label">world angle</span><span class="val-num" id="d2-ship-angle">—</span></div>
+      <div style="font-size:0.72rem;color:var(--muted);margin:6px 0 4px">TURRET <span style="color:#a78bfa">■</span></div>
+      <div class="val-row"><span class="val-label">local angle</span><span class="val-num" id="d2-turret-local">—</span></div>
+      <div class="val-row"><span class="val-label">world angle</span><span class="val-num purple" id="d2-turret-world-angle">—</span></div>
+      <div class="val-row"><span class="val-label">world pos</span><span class="val-num purple" id="d2-turret-world-pos">—</span></div>
+      <div class="code-block">// Barrel world pos — walks:
+//   scene → ship → turret → barrel
+barrel.getWorldPosition()
+// → (<span id="d2-barrel-x">0</span>, <span id="d2-barrel-y">0</span>)
+
+// Renderer does this automatically
+// for every Drawable before draw().</div>
+    </div>
+
+    <!-- Panel 3: dt Animation -->
+    <div class="info" id="panel-3" style="display:none">
+      <h3>dt Animation</h3>
+      <p>Every <code>OrbitalNode.update(dt)</code> does <code>this.angle += speed × dt</code>. Multiplying by <code>dt</code> makes the animation frame-rate independent — it covers the same angle per second regardless of FPS.</p>
+      <div class="val-row"><span class="val-label">FPS</span><span class="val-num green" id="d3-fps">60</span></div>
+      <div class="val-row"><span class="val-label">earth pos</span><span class="val-num accent" id="d3-earth-pos">—</span></div>
+      <div class="val-row"><span class="val-label">moon pos</span><span class="val-num purple" id="d3-moon-pos">—</span></div>
+      <div class="code-block">// OrbitalNode — invisible pivot,
+// not a Drawable, never rendered.
+// Its children inherit the rotation.
+class OrbitalNode extends SceneNode {
+  update(dt) {
+    this.angle += this._speed * dt;
+  }
+}
+
+// Moon's world pos is computed from:
+//   earthPivot → moonPivot → moon
+moon.getWorldPosition();</div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // Vector (from src/utils.js)
+    // =========================================================================
+    class Vector {
+      constructor(x = 0, y = 0) { this.x = x; this.y = y; }
+      static zero()         { return new Vector(0, 0); }
+      static one()          { return new Vector(1, 1); }
+      static from(v)        { return new Vector(v.x, v.y); }
+      static fromAngle(rad) { return new Vector(Math.cos(rad), Math.sin(rad)); }
+      set(x, y)  { this.x = x; this.y = y; return this; }
+      copy(v)    { this.x = v.x; this.y = v.y; return this; }
+      clone()    { return new Vector(this.x, this.y); }
+      add(v)     { this.x += v.x; this.y += v.y; return this; }
+      sub(v)     { this.x -= v.x; this.y -= v.y; return this; }
+      mul(v)     { this.x *= v.x; this.y *= v.y; return this; }
+      div(v)     { this.x /= v.x; this.y /= v.y; return this; }
+      scale(s)   { this.x *= s;   this.y *= s;   return this; }
+      negate()   { this.x = -this.x; this.y = -this.y; return this; }
+      normalize() { const l = this.length(); if (l > 0) { this.x /= l; this.y /= l; } return this; }
+      rotate(rad) {
+        const c = Math.cos(rad), s = Math.sin(rad);
+        const nx = this.x * c - this.y * s;
+        this.y = this.x * s + this.y * c; this.x = nx; return this;
+      }
+      lerp(v, t)     { this.x += (v.x - this.x) * t; this.y += (v.y - this.y) * t; return this; }
+      length()       { return Math.sqrt(this.x * this.x + this.y * this.y); }
+      dot(v)         { return this.x * v.x + this.y * v.y; }
+      distance(v)    { const dx = this.x - v.x, dy = this.y - v.y; return Math.sqrt(dx * dx + dy * dy); }
+      angle()        { return Math.atan2(this.y, this.x); }
+      toString()     { return `Vector(${this.x.toFixed(2)}, ${this.y.toFixed(2)})`; }
+    }
+
+    // =========================================================================
+    // SceneNode (from src/core.js)
+    // =========================================================================
+    class SceneNode {
+      static _nextId = 0;
+      constructor() {
+        this.id       = SceneNode._nextId++;
+        this.name     = `node_${this.id}`;
+        this.scene    = null;
+        this.position = Vector.zero();
+        this.angle    = 0;
+        this.scale    = Vector.one();
+        this.parent   = null;
+      }
+      setParent(node, keepWorldPosition = false) {
+        if (keepWorldPosition) {
+          const wp = this.getWorldPosition(), wa = this.getWorldAngle(), ws = this.getWorldScale();
+          this.parent = node;
+          this.setWorldPosition(wp); this.setWorldAngle(wa); this.setWorldScale(ws);
+        } else { this.parent = node; }
+      }
+      getWorldPosition() {
+        if (!this.parent) return this.position.clone();
+        const p = this.parent.getWorldPosition(), pa = this.parent.getWorldAngle(), ps = this.parent.getWorldScale();
+        return p.add(this.position.clone().mul(ps).rotate(pa));
+      }
+      setWorldPosition(w) {
+        if (!this.parent) { this.position.set(w.x, w.y); return; }
+        const p = this.parent.getWorldPosition(), pa = this.parent.getWorldAngle(), ps = this.parent.getWorldScale();
+        this.position.copy(w.sub(p).rotate(-pa).div(ps));
+      }
+      getWorldAngle() { return this.parent ? this.parent.getWorldAngle() + this.angle : this.angle; }
+      setWorldAngle(wa) { this.angle = this.parent ? wa - this.parent.getWorldAngle() : wa; }
+      getWorldScale() { return this.parent ? this.parent.getWorldScale().mul(this.scale) : this.scale.clone(); }
+      setWorldScale(ws) { this.scale.copy(this.parent ? ws.clone().div(this.parent.getWorldScale()) : ws.clone()); }
+      start()     {}
+      update(dt)  {}
+      destroy()   {}
+    }
+
+    // =========================================================================
+    // Scene (from src/core.js)
+    // =========================================================================
+    class Scene {
+      constructor() {
+        this.nodes = []; this.pending = []; this.pendingRemoval = []; this.running = false;
+      }
+      addNode(node) {
+        node.scene = this;
+        if (this.running) { this.pending.push(node); }
+        else { this.nodes.push(node); node.start(); }
+      }
+      removeNode(node) {
+        const pi = this.pending.indexOf(node);
+        if (pi !== -1) { this.pending.splice(pi, 1); node.destroy(); node.scene = null; return; }
+        if (this.running) { this.pendingRemoval.push(node); }
+        else { const i = this.nodes.indexOf(node); if (i !== -1) { this.nodes.splice(i, 1); node.destroy(); node.scene = null; } }
+      }
+      findNode(name)      { return this.nodes.find(n => n.name === name) ?? null; }
+      findNodesByType(T)  { return this.nodes.filter(n => n instanceof T); }
+      start()  { this.running = true; }
+      update(dt) {
+        if (this.pendingRemoval.length > 0) {
+          for (const n of this.pendingRemoval) { const i = this.nodes.indexOf(n); if (i !== -1) this.nodes.splice(i, 1); n.destroy(); n.scene = null; }
+          this.pendingRemoval = [];
+        }
+        if (this.pending.length > 0) {
+          for (const n of this.pending) { this.nodes.push(n); n.start(); }
+          this.pending = [];
+        }
+        for (const n of this.nodes) n.update(dt);
+      }
+      destroy() { this.running = false; }
+    }
+
+    // =========================================================================
+    // SceneManager (from src/core.js)
+    // =========================================================================
+    class SceneManager {
+      constructor() { this.registry = new Map(); this.currentScene = null; }
+      register(name, init) { this.registry.set(name, init); }
+      update(dt) { if (this.currentScene) this.currentScene.update(dt); }
+      switchScene(name, params = {}) {
+        const init = this.registry.get(name);
+        if (!init) throw new Error(`SceneManager: Unknown scene "${name}"`);
+        if (this.currentScene) this.currentScene.destroy();
+        const scene = new Scene();
+        init(scene, params);
+        scene.start();
+        this.currentScene = scene;
+      }
+    }
+
+    // =========================================================================
+    // Drawable (from src/graphics.js)
+    // =========================================================================
+    class Drawable extends SceneNode {
+      constructor(params = {}) {
+        super();
+        this.zIndex = params.zIndex ?? 0;
+      }
+      draw(ctx) {}
+    }
+
+    // =========================================================================
+    // RectDrawable (from src/graphics.js)
+    // =========================================================================
+    class RectDrawable extends Drawable {
+      constructor(params = {}) {
+        super(params);
+        this.width       = params.width       ?? 40;
+        this.height      = params.height      ?? 40;
+        this.fillColor   = params.fillColor   ?? null;
+        this.strokeColor = params.strokeColor ?? null;
+        this.lineWidth   = params.lineWidth   ?? 1;
+      }
+      draw(ctx) {
+        ctx.beginPath();
+        ctx.rect(-this.width / 2, -this.height / 2, this.width, this.height);
+        if (this.fillColor   !== null) { ctx.fillStyle = this.fillColor; ctx.fill(); }
+        if (this.strokeColor !== null) { ctx.strokeStyle = this.strokeColor; ctx.lineWidth = this.lineWidth; ctx.stroke(); }
+      }
+    }
+
+    // =========================================================================
+    // CircleDrawable (from src/graphics.js)
+    // =========================================================================
+    class CircleDrawable extends Drawable {
+      constructor(params = {}) {
+        super(params);
+        this.radius      = params.radius      ?? 20;
+        this.fillColor   = params.fillColor   ?? null;
+        this.strokeColor = params.strokeColor ?? null;
+        this.lineWidth   = params.lineWidth   ?? 1;
+      }
+      draw(ctx) {
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        if (this.fillColor   !== null) { ctx.fillStyle = this.fillColor; ctx.fill(); }
+        if (this.strokeColor !== null) { ctx.strokeStyle = this.strokeColor; ctx.lineWidth = this.lineWidth; ctx.stroke(); }
+      }
+    }
+
+    // =========================================================================
+    // DashRingDrawable — selection ring drawn via scene node (no save/restore)
+    // =========================================================================
+    class DashRingDrawable extends Drawable {
+      constructor() {
+        super({ zIndex: 99 });
+        this._radius = 20;
+      }
+      draw(ctx) {
+        ctx.beginPath();
+        ctx.arc(0, 0, this._radius, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ffffff25';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    // =========================================================================
+    // Renderer (from src/graphics.js)
+    // =========================================================================
+    class Renderer {
+      constructor(canvas) {
+        this.canvas     = canvas;
+        this.ctx        = canvas.getContext('2d');
+        this.clearColor = '#000000';
+      }
+      render(drawables) {
+        if (this.clearColor !== null) {
+          this.ctx.fillStyle = this.clearColor;
+          this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+        const layers = new Map();
+        for (const d of drawables) {
+          const key = `${d.zIndex}`;
+          if (!layers.has(key)) layers.set(key, { zIndex: d.zIndex, drawables: [] });
+          layers.get(key).drawables.push(d);
+        }
+        for (const layer of [...layers.values()].sort((a, b) => a.zIndex - b.zIndex)) {
+          for (const d of layer.drawables) {
+            this.ctx.setTransform(this._computeMatrix(d));
+            d.draw(this.ctx);
+          }
+        }
+        this.ctx.resetTransform();
+      }
+      _computeMatrix(d) {
+        const pos = d.getWorldPosition(), angle = d.getWorldAngle(), scale = d.getWorldScale();
+        const cos = Math.cos(angle), sin = Math.sin(angle);
+        return new DOMMatrix([scale.x * cos, scale.x * sin, -scale.y * sin, scale.y * cos, pos.x, pos.y]);
+      }
+    }
+
+    // =========================================================================
+    // Canvas / renderer setup
+    // =========================================================================
+    const canvas   = document.getElementById('canvas');
+    const renderer = new Renderer(canvas);
+    renderer.clearColor = '#08080f';
+    const ctx = renderer.ctx;
+    const W = canvas.width, H = canvas.height;
+    const mouse = new Vector(W / 2, H / 2);
+
+    function getCanvasPoint(clientX, clientY) {
+      const r = canvas.getBoundingClientRect();
+      return new Vector(
+        (clientX - r.left) * (W / r.width),
+        (clientY - r.top)  * (H / r.height)
+      );
+    }
+    canvas.addEventListener('mousemove', e => mouse.copy(getCanvasPoint(e.clientX, e.clientY)));
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      mouse.copy(getCanvasPoint(e.touches[0].clientX, e.touches[0].clientY));
+    }, { passive: false });
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      mouse.copy(getCanvasPoint(e.touches[0].clientX, e.touches[0].clientY));
+    }, { passive: false });
+
+    function n2(v) { return v.toFixed(2); }
+    function deg(r) { return (r * 180 / Math.PI).toFixed(1) + '°'; }
+
+    // =========================================================================
+    // DEMO 0 — Shapes & Renderer
+    // Click / tap a shape to inspect it.
+    // =========================================================================
+
+    // SpinRect extends RectDrawable and rotates at a fixed speed each frame.
+    class SpinRect extends RectDrawable {
+      constructor(pos, params) {
+        super(params);
+        this.position.copy(pos);
+        this._speed = params.speed ?? 0.5;
+      }
+      update(dt) { this.angle += this._speed * dt; }
+    }
+
+    const sm0 = new SceneManager();
+    let selected0 = null;
+    let selRing0  = null;
+
+    sm0.register('shapes', (scene) => {
+      const r1 = new SpinRect(new Vector(120, 130), {
+        width: 72, height: 36, speed: 0.6, zIndex: 0,
+        fillColor: '#4cc9f018', strokeColor: '#4cc9f0', lineWidth: 1.5,
+      });
+      r1.name = 'WideRect';
+      scene.addNode(r1);
+
+      const r2 = new SpinRect(new Vector(310, 190), {
+        width: 48, height: 48, speed: -0.9, zIndex: 0,
+        fillColor: '#a78bfa18', strokeColor: '#a78bfa', lineWidth: 1.5,
+      });
+      r2.name = 'Square';
+      r2.scale.set(1.3, 1.3);
+      scene.addNode(r2);
+
+      const r3 = new SpinRect(new Vector(440, 120), {
+        width: 88, height: 18, speed: 1.3, zIndex: 0,
+        fillColor: '#f7258518', strokeColor: '#f72585', lineWidth: 1.5,
+      });
+      r3.name = 'ThinRect';
+      scene.addNode(r3);
+
+      const c1 = new CircleDrawable({
+        radius: 38, zIndex: 0,
+        fillColor: '#4ade8018', strokeColor: '#4ade80', lineWidth: 1.5,
+      });
+      c1.name = 'BigCircle';
+      c1.position.set(175, 305);
+      scene.addNode(c1);
+
+      const c2 = new CircleDrawable({
+        radius: 22, zIndex: 0,
+        fillColor: '#fbbf2418', strokeColor: '#fbbf24', lineWidth: 1.5,
+      });
+      c2.name = 'SmallCircle';
+      c2.position.set(400, 320);
+      scene.addNode(c2);
+
+      selected0 = r1;
+
+      // Selection ring — drawn as a scene node, no save/translate/rotate/restore needed
+      selRing0 = new DashRingDrawable();
+      selRing0.name = 'SelectionRing';
+      scene.addNode(selRing0);
+    });
+    sm0.switchScene('shapes');
+
+    function hitRadius0(node) {
+      if (node instanceof RectDrawable)  return Math.max(node.width, node.height) * node.getWorldScale().x * 0.6;
+      if (node instanceof CircleDrawable) return node.radius + 8;
+      return 20;
+    }
+
+    function trySelect0(p) {
+      for (const n of sm0.currentScene.findNodesByType(Drawable)) {
+        if (n === selRing0) continue;
+        if (n.getWorldPosition().distance(p) < hitRadius0(n)) { selected0 = n; return; }
+      }
+    }
+    canvas.addEventListener('click',    e => { if (currentDemo !== 0) return; trySelect0(getCanvasPoint(e.clientX, e.clientY)); });
+    canvas.addEventListener('touchend', e => { if (currentDemo !== 0) return; trySelect0(getCanvasPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY)); });
+
+    function updateDemo0(dt) {
+      sm0.update(dt);
+
+      // Update selection ring position and radius each frame — no save/restore needed
+      if (selected0 && selRing0) {
+        selRing0.position.copy(selected0.getWorldPosition());
+        selRing0._radius = hitRadius0(selected0) + 6;
+      }
+
+      renderer.render(sm0.currentScene.findNodesByType(Drawable));
+
+      const s = selected0;
+      const typeLabel = s instanceof RectDrawable ? 'RectDrawable' : 'CircleDrawable';
+      const sizeLabel = s instanceof RectDrawable
+        ? `${s.width} × ${s.height}`
+        : `radius ${s.radius}`;
+
+      document.getElementById('d0-selected-name').textContent = s.name;
+      document.getElementById('d0-type').textContent = typeLabel;
+      document.getElementById('d0-size').textContent = sizeLabel;
+      document.getElementById('d0-pos').textContent = '(' + n2(s.position.x) + ', ' + n2(s.position.y) + ')';
+      document.getElementById('d0-angle').textContent = deg(s.angle);
+      document.getElementById('d0-scale').textContent = '(' + n2(s.scale.x) + ', ' + n2(s.scale.y) + ')';
+      document.getElementById('d0-zindex').textContent = s.zIndex;
+    }
+
+    // =========================================================================
+    // DEMO 1 — z-Index Layering
+    // Click / tap a shape to bring it to the front.
+    // =========================================================================
+    const sm1      = new SceneManager();
+    const Z_COLORS = ['#4cc9f0', '#4ade80', '#f72585', '#a78bfa'];
+    const Z_NAMES  = ['Blue', 'Green', 'Pink', 'Purple'];
+    let   z1Nodes  = [];
+
+    sm1.register('zindex', (scene) => {
+      z1Nodes = [];
+      const cx = W / 2, cy = H / 2;
+      const configs = [
+        { pos: new Vector(cx - 55, cy - 28), radius: 72 },
+        { pos: new Vector(cx + 22, cy - 42), radius: 66 },
+        { pos: new Vector(cx - 18, cy + 32), radius: 62 },
+        { pos: new Vector(cx + 52, cy + 14), radius: 56 },
+      ];
+      configs.forEach((c, i) => {
+        const node = new CircleDrawable({
+          radius:      c.radius,
+          fillColor:   Z_COLORS[i] + '55',
+          strokeColor: Z_COLORS[i],
+          lineWidth:   2,
+          zIndex:      i,
+        });
+        node.name = Z_NAMES[i];
+        node.position.copy(c.pos);
+        z1Nodes.push(node);
+        scene.addNode(node);
+      });
+    });
+    sm1.switchScene('zindex');
+
+    function bringToFront1(node) {
+      const max = Math.max(...z1Nodes.map(n => n.zIndex));
+      node.zIndex = max + 1;
+    }
+
+    function resetZIndex() {
+      z1Nodes.forEach((n, i) => n.zIndex = i);
+    }
+
+    function tryBringToFront1(p) {
+      // Iterate highest-z first so the topmost visible circle is hit first.
+      const sorted = [...z1Nodes].sort((a, b) => b.zIndex - a.zIndex);
+      for (const n of sorted) {
+        if (n.getWorldPosition().distance(p) < n.radius) { bringToFront1(n); return; }
+      }
+    }
+    canvas.addEventListener('click',    e => { if (currentDemo !== 1) return; tryBringToFront1(getCanvasPoint(e.clientX, e.clientY)); });
+    canvas.addEventListener('touchend', e => { if (currentDemo !== 1) return; tryBringToFront1(getCanvasPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY)); });
+
+    function updateDemo1(dt) {
+      sm1.update(dt);
+      renderer.render(sm1.currentScene.findNodesByType(Drawable));
+
+      // Draw z-index labels upright at each circle's world position — no save/restore needed
+      ctx.font = 'bold 12px Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (let i = 0; i < z1Nodes.length; i++) {
+        const wp = z1Nodes[i].getWorldPosition();
+        ctx.fillStyle = Z_COLORS[i];
+        ctx.fillText(`z:${z1Nodes[i].zIndex}`, wp.x, wp.y);
+      }
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+
+      // Update z-value spans
+      for (let i = 0; i < z1Nodes.length; i++) {
+        document.getElementById('z-val-' + i).textContent = 'z = ' + z1Nodes[i].zIndex;
+      }
+      // Reorder val-rows by ascending z-index (bottom → top draw order)
+      const container = document.getElementById('z-rows-container');
+      const sortedByZ = [...z1Nodes].sort((a, b) => a.zIndex - b.zIndex);
+      sortedByZ.forEach(n => {
+        const i = Z_NAMES.indexOf(n.name);
+        container.appendChild(document.getElementById('z-row-' + i));
+      });
+    }
+
+    // =========================================================================
+    // DEMO 2 — Hierarchy Rendering
+    // Move mouse / touch to aim the ship.
+    // =========================================================================
+    const sm2 = new SceneManager();
+    let h2TurretT = 0;
+
+    sm2.register('ship', (scene) => {
+      const ship = new RectDrawable({
+        width: 66, height: 28, zIndex: 0,
+        fillColor: '#4cc9f015', strokeColor: '#4cc9f0', lineWidth: 2,
+      });
+      ship.name = 'Ship';
+      ship.position.set(W / 2, H / 2);
+      scene.addNode(ship);
+
+      const turret = new RectDrawable({
+        width: 24, height: 24, zIndex: 1,
+        fillColor: '#a78bfa15', strokeColor: '#a78bfa', lineWidth: 2,
+      });
+      turret.name = 'Turret';
+      turret.position.set(0, -22);
+      turret.setParent(ship);
+      scene.addNode(turret);
+
+      const barrel = new RectDrawable({
+        width: 30, height: 7, zIndex: 2,
+        fillColor: '#f7258530', strokeColor: '#f72585', lineWidth: 1.5,
+      });
+      barrel.name = 'Barrel';
+      barrel.position.set(17, 0);
+      barrel.setParent(turret);
+      scene.addNode(barrel);
+
+      const engineL = new RectDrawable({
+        width: 14, height: 24, zIndex: 0,
+        fillColor: '#fb923c15', strokeColor: '#fb923c', lineWidth: 1.5,
+      });
+      engineL.name = 'EngineL';
+      engineL.position.set(-25, 18);
+      engineL.setParent(ship);
+      scene.addNode(engineL);
+
+      const engineR = new RectDrawable({
+        width: 14, height: 24, zIndex: 0,
+        fillColor: '#fb923c15', strokeColor: '#fb923c', lineWidth: 1.5,
+      });
+      engineR.name = 'EngineR';
+      engineR.position.set(25, 18);
+      engineR.setParent(ship);
+      scene.addNode(engineR);
+    });
+    sm2.switchScene('ship');
+
+    function updateDemo2(dt) {
+      const ship   = sm2.currentScene.findNode('Ship');
+      const turret = sm2.currentScene.findNode('Turret');
+      const barrel = sm2.currentScene.findNode('Barrel');
+
+      // Ship smoothly faces mouse.
+      const toMouse = mouse.clone().sub(ship.position);
+      if (toMouse.length() > 5) {
+        const target  = toMouse.angle();
+        const da      = target - ship.angle;
+        const wrapped = ((da + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        ship.angle   += wrapped * (1 - Math.pow(1 - 0.05, dt * 60));
+      }
+
+      // Turret oscillates in local space independently.
+      h2TurretT   += dt * 1.2;
+      turret.angle = Math.sin(h2TurretT) * 0.7;
+
+      sm2.update(dt);
+      renderer.render(sm2.currentScene.findNodesByType(Drawable));
+
+      const turretWP = turret.getWorldPosition();
+      const barrelWP = barrel.getWorldPosition();
+
+      document.getElementById('d2-ship-angle').textContent = deg(ship.getWorldAngle());
+      document.getElementById('d2-turret-local').textContent = deg(turret.angle);
+      document.getElementById('d2-turret-world-angle').textContent = deg(turret.getWorldAngle());
+      document.getElementById('d2-turret-world-pos').textContent = '(' + n2(turretWP.x) + ', ' + n2(turretWP.y) + ')';
+      document.getElementById('d2-barrel-x').textContent = n2(barrelWP.x);
+      document.getElementById('d2-barrel-y').textContent = n2(barrelWP.y);
+    }
+
+    // =========================================================================
+    // DEMO 3 — dt Animation (Solar System)
+    // All orbits advance by speed × dt — frame-rate independent.
+    // =========================================================================
+
+    // OrbitalNode is an invisible pivot that rotates at a fixed angular speed.
+    // It is NOT a Drawable, so Renderer skips it. It exists only to drive the
+    // parent-chain transform that its Drawable children inherit.
+    class OrbitalNode extends SceneNode {
+      constructor(speed) { super(); this._speed = speed; }
+      update(dt) { this.angle += this._speed * dt; }
+    }
+
+    const sm3 = new SceneManager();
+    let   fps3 = 60;
+
+    const ORBIT_R = [88, 142, 192];   // px from sun centre
+
+    sm3.register('solar', (scene) => {
+      // Orbit rings — CircleDrawable nodes at zIndex 0, drawn as background rings
+      // No save/translate/rotate/restore needed; Renderer handles transforms via scene node hierarchy
+      for (const r of ORBIT_R) {
+        const ring = new CircleDrawable({
+          radius: r, zIndex: 0,
+          fillColor: null, strokeColor: '#ffffff08', lineWidth: 1,
+        });
+        ring.name = 'OrbitRing_' + r;
+        ring.position.set(W / 2, H / 2);
+        scene.addNode(ring);
+      }
+
+      // Sun
+      const sun = new CircleDrawable({
+        radius: 28, zIndex: 1,
+        fillColor: '#fbbf24', strokeColor: '#fde68a', lineWidth: 2,
+      });
+      sun.name = 'Sun';
+      sun.position.set(W / 2, H / 2);
+      scene.addNode(sun);
+
+      // Earth system
+      const earthPivot = new OrbitalNode(0.55);
+      earthPivot.position.set(W / 2, H / 2);
+      scene.addNode(earthPivot);
+
+      const earth = new CircleDrawable({
+        radius: 11, zIndex: 1,
+        fillColor: '#4cc9f0', strokeColor: '#93c5fd', lineWidth: 1.5,
+      });
+      earth.name = 'Earth';
+      earth.position.set(ORBIT_R[0], 0);
+      earth.setParent(earthPivot);
+      scene.addNode(earth);
+
+      // Moon orbits the same pivot point as earth but rotates faster.
+      const moonPivot = new OrbitalNode(2.8);
+      moonPivot.position.set(ORBIT_R[0], 0);   // same local offset as earth
+      moonPivot.setParent(earthPivot);
+      scene.addNode(moonPivot);
+
+      const moon = new CircleDrawable({ radius: 4, zIndex: 1, fillColor: '#9ca3af' });
+      moon.name = 'Moon';
+      moon.position.set(22, 0);
+      moon.setParent(moonPivot);
+      scene.addNode(moon);
+
+      // Mars
+      const marsPivot = new OrbitalNode(0.35);
+      marsPivot.position.set(W / 2, H / 2);
+      scene.addNode(marsPivot);
+
+      const mars = new CircleDrawable({
+        radius: 8, zIndex: 1,
+        fillColor: '#f97316', strokeColor: '#fdba74', lineWidth: 1.5,
+      });
+      mars.name = 'Mars';
+      mars.position.set(ORBIT_R[1], 0);
+      mars.setParent(marsPivot);
+      scene.addNode(mars);
+
+      // Jupiter
+      const jupiterPivot = new OrbitalNode(0.18);
+      jupiterPivot.position.set(W / 2, H / 2);
+      scene.addNode(jupiterPivot);
+
+      const jupiter = new CircleDrawable({
+        radius: 20, zIndex: 1,
+        fillColor: '#d97706', strokeColor: '#fbbf24', lineWidth: 2,
+      });
+      jupiter.name = 'Jupiter';
+      jupiter.position.set(ORBIT_R[2], 0);
+      jupiter.setParent(jupiterPivot);
+      scene.addNode(jupiter);
+    });
+    sm3.switchScene('solar');
+
+    function updateDemo3(dt) {
+      fps3 = fps3 * 0.9 + (1 / Math.max(dt, 0.001)) * 0.1;
+
+      sm3.update(dt);
+      // Orbit rings (zIndex 0) are drawn before planets (zIndex 1) by the Renderer
+      renderer.render(sm3.currentScene.findNodesByType(Drawable));
+
+      const earth = sm3.currentScene.findNode('Earth');
+      const moon  = sm3.currentScene.findNode('Moon');
+      const earthWP = earth.getWorldPosition();
+      const moonWP  = moon.getWorldPosition();
+
+      document.getElementById('d3-fps').textContent = Math.round(fps3);
+      document.getElementById('d3-earth-pos').textContent = '(' + n2(earthWP.x) + ', ' + n2(earthWP.y) + ')';
+      document.getElementById('d3-moon-pos').textContent = '(' + n2(moonWP.x) + ', ' + n2(moonWP.y) + ')';
+    }
+
+    // =========================================================================
+    // Main loop
+    // =========================================================================
+    const demos = [updateDemo0, updateDemo1, updateDemo2, updateDemo3];
+    let currentDemo = 0;
+
+    function setDemo(i) {
+      currentDemo = i;
+      document.querySelectorAll('.tab').forEach((t, idx) => t.classList.toggle('active', idx === i));
+      document.querySelectorAll('.info').forEach((p, idx) => p.style.display = idx === i ? '' : 'none');
+    }
+
+    let lastTime = 0;
+    function loop(timestamp) {
+      const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+      lastTime = timestamp;
+      demos[currentDemo](dt);
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+  </script>
+
+</body>
+</html>

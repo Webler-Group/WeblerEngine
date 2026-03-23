@@ -241,7 +241,89 @@
 
   <div class="demo-area">
     <canvas id="canvas" width="560" height="420"></canvas>
-    <div class="info" id="info"></div>
+
+    <!-- Panel 0: Moving Object -->
+    <div class="info" id="panel-0">
+      <h3>Moving Object</h3>
+      <p>The ball's <span style="color:var(--accent)">position</span> and <span style="color:var(--green)">velocity</span> are both vectors. Each frame we add velocity to position.</p>
+      <div class="val-row"><span class="val-label">position.x</span><span class="val-num" id="d0-pos-x">0</span></div>
+      <div class="val-row"><span class="val-label">position.y</span><span class="val-num" id="d0-pos-y">0</span></div>
+      <div class="val-row"><span class="val-label">velocity.x</span><span class="val-num" id="d0-vel-x">0</span></div>
+      <div class="val-row"><span class="val-label">velocity.y</span><span class="val-num" id="d0-vel-y">0</span></div>
+      <div class="val-row"><span class="val-label">speed (length)</span><span class="val-num" id="d0-speed">0</span></div>
+      <div class="val-row"><span class="val-label">direction.x</span><span class="val-num" id="d0-dir-x">0</span></div>
+      <div class="val-row"><span class="val-label">direction.y</span><span class="val-num" id="d0-dir-y">0</span></div>
+      <div class="legend">
+        <div class="legend-item"><div class="dot" style="background:var(--accent)"></div>position vector (origin → ball)</div>
+        <div class="legend-item"><div class="dot" style="background:var(--green)"></div>velocity vector (from ball)</div>
+      </div>
+      <div class="code-block">// Each frame:
+position.add(velocity);
+
+// Speed = velocity.length()
+const speed = velocity.length();</div>
+    </div>
+
+    <!-- Panel 1: Find Direction -->
+    <div class="info" id="panel-1" style="display:none">
+      <h3>Find Direction</h3>
+      <p>Move your mouse. The <span style="color:var(--accent)">cyan arrow</span> always points toward the cursor at exactly <b>160 px</b> — that's the normalize-then-scale pattern.</p>
+      <div class="val-row"><span class="val-label">mouse.x</span><span class="val-num" id="d1-mx">0</span></div>
+      <div class="val-row"><span class="val-label">mouse.y</span><span class="val-num" id="d1-my">0</span></div>
+      <div class="val-row"><span class="val-label">raw length</span><span class="val-num" id="d1-len">0</span></div>
+      <div class="val-row"><span class="val-label">normalized.x</span><span class="val-num" id="d1-nx">0</span></div>
+      <div class="val-row"><span class="val-label">normalized.y</span><span class="val-num" id="d1-ny">0</span></div>
+      <div class="val-row"><span class="val-label">norm length</span><span class="val-num" id="d1-nlen">0</span></div>
+      <div class="code-block">const dir = target.clone()
+  .sub(origin)   // point at target
+  .normalize()   // length = 1
+  .scale(speed); // apply speed</div>
+    </div>
+
+    <!-- Panel 2: Dot Product -->
+    <div class="info" id="panel-2" style="display:none">
+      <h3>Dot Product — Field of View</h3>
+      <p>The guard <span style="color:var(--accent)">faces your mouse</span>. The orbiting player is <span id="d2-spotted-span"><b id="d2-spotted-text">not seen</b></span> when inside the FOV cone.</p>
+      <div class="val-row"><span class="val-label">dot product</span><span class="val-num" id="d2-dot">0</span></div>
+      <div class="val-row"><span class="val-label">angle between</span><span class="val-num" id="d2-angle">0</span></div>
+      <div class="val-row"><span class="val-label">FOV threshold</span><span class="val-num">&gt; 0.65</span></div>
+      <div class="val-row"><span class="val-label">status</span><span class="val-num" id="d2-status">hidden</span></div>
+      <div class="legend">
+        <div class="legend-item"><div class="dot" style="background:var(--accent)"></div>guard facing direction</div>
+        <div class="legend-item"><div class="dot" style="background:#ffffff40"></div>direction to player</div>
+      </div>
+      <div class="code-block">const d = facing.dot(toPlayer);
+// d > 0  → same direction
+// d = 0  → perpendicular
+// d < 0  → opposite
+if (d > 0.65) spotted = true;</div>
+    </div>
+
+    <!-- Panel 3: Lerp Follow -->
+    <div class="info" id="panel-3" style="display:none">
+      <h3>Lerp Follow</h3>
+      <p>The camera <span style="color:var(--accent)">lerps</span> toward the target each frame. Adjust the factor to change how snappy or smooth it feels.</p>
+      <div class="val-row"><span class="val-label">camera.x</span><span class="val-num" id="d3-cx">0</span></div>
+      <div class="val-row"><span class="val-label">camera.y</span><span class="val-num" id="d3-cy">0</span></div>
+      <div class="val-row"><span class="val-label">target.x</span><span class="val-num" id="d3-tx">0</span></div>
+      <div class="val-row"><span class="val-label">target.y</span><span class="val-num" id="d3-ty">0</span></div>
+      <div class="val-row"><span class="val-label">distance</span><span class="val-num" id="d3-dist">0</span></div>
+      <div class="slider-row">
+        <label>lerp factor</label>
+        <input type="range" id="lerpSlider" min="1" max="30" value="5"
+          oninput="lerpFactor = this.value / 100; document.getElementById('lerpVal').textContent = lerpFactor.toFixed(2); document.getElementById('d3-code-factor').textContent = lerpFactor.toFixed(2); document.getElementById('d3-code-pct').textContent = Math.round(lerpFactor * 100);">
+        <span class="slider-val" id="lerpVal">0.05</span>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="dot" style="background:var(--pink)"></div>moving target</div>
+        <div class="legend-item"><div class="dot" style="background:var(--accent)"></div>camera (lerps toward target)</div>
+      </div>
+      <div class="code-block">// Called every frame:
+camera.lerp(target, <span id="d3-code-factor">0.05</span>);
+
+// Each call moves camera
+// <span id="d3-code-pct">5</span>% closer to target.</div>
+    </div>
   </div>
 
   <script>
@@ -430,25 +512,13 @@
       const speed = vel.length();
       const norm = vel.clone().normalize();
 
-      document.getElementById('info').innerHTML = `
-    <h3>Moving Object</h3>
-    <p>The ball's <span style="color:var(--accent)">position</span> and <span style="color:var(--green)">velocity</span> are both vectors. Each frame we add velocity to position.</p>
-    <div class="val-row"><span class="val-label">position.x</span><span class="val-num">${n1(ball0.pos.x)}</span></div>
-    <div class="val-row"><span class="val-label">position.y</span><span class="val-num">${n1(ball0.pos.y)}</span></div>
-    <div class="val-row"><span class="val-label">velocity.x</span><span class="val-num">${n2(ball0.vel.x)}</span></div>
-    <div class="val-row"><span class="val-label">velocity.y</span><span class="val-num">${n2(ball0.vel.y)}</span></div>
-    <div class="val-row"><span class="val-label">speed (length)</span><span class="val-num">${n2(speed)}</span></div>
-    <div class="val-row"><span class="val-label">direction.x</span><span class="val-num">${n2(norm.x)}</span></div>
-    <div class="val-row"><span class="val-label">direction.y</span><span class="val-num">${n2(norm.y)}</span></div>
-    <div class="legend">
-      <div class="legend-item"><div class="dot" style="background:var(--accent)"></div>position vector (origin → ball)</div>
-      <div class="legend-item"><div class="dot" style="background:var(--green)"></div>velocity vector (from ball)</div>
-    </div>
-    <div class="code-block">// Each frame:
-position.add(velocity);
-
-// Speed = velocity.length()
-const speed = velocity.length();</div>`;
+      document.getElementById('d0-pos-x').textContent = n1(ball0.pos.x);
+      document.getElementById('d0-pos-y').textContent = n1(ball0.pos.y);
+      document.getElementById('d0-vel-x').textContent = n2(ball0.vel.x);
+      document.getElementById('d0-vel-y').textContent = n2(ball0.vel.y);
+      document.getElementById('d0-speed').textContent = n2(speed);
+      document.getElementById('d0-dir-x').textContent = n2(norm.x);
+      document.getElementById('d0-dir-y').textContent = n2(norm.y);
     }
 
     // =============================================================================
@@ -486,19 +556,12 @@ const speed = velocity.length();</div>`;
       // Mouse dot
       drawCircle(mouse, 7, '#ffffff50', '');
 
-      document.getElementById('info').innerHTML = `
-    <h3>Find Direction</h3>
-    <p>Move your mouse. The <span style="color:var(--accent)">cyan arrow</span> always points toward the cursor at exactly <b>160 px</b> — that's the normalize-then-scale pattern.</p>
-    <div class="val-row"><span class="val-label">mouse.x</span><span class="val-num">${n1(mouse.x)}</span></div>
-    <div class="val-row"><span class="val-label">mouse.y</span><span class="val-num">${n1(mouse.y)}</span></div>
-    <div class="val-row"><span class="val-label">raw length</span><span class="val-num">${n1(len)}</span></div>
-    <div class="val-row"><span class="val-label">normalized.x</span><span class="val-num">${n2(norm.x)}</span></div>
-    <div class="val-row"><span class="val-label">normalized.y</span><span class="val-num">${n2(norm.y)}</span></div>
-    <div class="val-row"><span class="val-label">norm length</span><span class="val-num">${len > 0 ? '1.00' : '0.00'}</span></div>
-    <div class="code-block">const dir = target.clone()
-  .sub(origin)   // point at target
-  .normalize()   // length = 1
-  .scale(speed); // apply speed</div>`;
+      document.getElementById('d1-mx').textContent = n1(mouse.x);
+      document.getElementById('d1-my').textContent = n1(mouse.y);
+      document.getElementById('d1-len').textContent = n1(len);
+      document.getElementById('d1-nx').textContent = n2(norm.x);
+      document.getElementById('d1-ny').textContent = n2(norm.y);
+      document.getElementById('d1-nlen').textContent = len > 0 ? '1.00' : '0.00';
     }
 
     // =============================================================================
@@ -570,22 +633,20 @@ const speed = velocity.length();</div>`;
 
       const angleDeg = (Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI).toFixed(1);
 
-      document.getElementById('info').innerHTML = `
-    <h3>Dot Product — Field of View</h3>
-    <p>The guard <span style="color:var(--accent)">faces your mouse</span>. The orbiting player is <span style="${spotted ? 'color:var(--pink)' : 'color:var(--green)'}"><b>${spotted ? 'SPOTTED' : 'not seen'}</b></span> when inside the FOV cone.</p>
-    <div class="val-row"><span class="val-label">dot product</span><span class="val-num ${spotted ? 'danger' : ''}">${n2(dot)}</span></div>
-    <div class="val-row"><span class="val-label">angle between</span><span class="val-num">${angleDeg}°</span></div>
-    <div class="val-row"><span class="val-label">FOV threshold</span><span class="val-num">> 0.65</span></div>
-    <div class="val-row"><span class="val-label">status</span><span class="val-num ${spotted ? 'danger' : ''}">${spotted ? 'SPOTTED' : 'hidden'}</span></div>
-    <div class="legend">
-      <div class="legend-item"><div class="dot" style="background:var(--accent)"></div>guard facing direction</div>
-      <div class="legend-item"><div class="dot" style="background:#ffffff40"></div>direction to player</div>
-    </div>
-    <div class="code-block">const d = facing.dot(toPlayer);
-// d > 0  → same direction
-// d = 0  → perpendicular
-// d < 0  → opposite
-if (d > 0.65) spotted = true;</div>`;
+      const d2SpottedSpan = document.getElementById('d2-spotted-span');
+      const d2SpottedText = document.getElementById('d2-spotted-text');
+      d2SpottedSpan.style.color = spotted ? 'var(--pink)' : 'var(--green)';
+      d2SpottedText.textContent = spotted ? 'SPOTTED' : 'not seen';
+
+      const d2Dot = document.getElementById('d2-dot');
+      d2Dot.textContent = n2(dot);
+      d2Dot.className = 'val-num' + (spotted ? ' danger' : '');
+
+      document.getElementById('d2-angle').textContent = angleDeg + '°';
+
+      const d2Status = document.getElementById('d2-status');
+      d2Status.textContent = spotted ? 'SPOTTED' : 'hidden';
+      d2Status.className = 'val-num' + (spotted ? ' danger' : '');
     }
 
     // =============================================================================
@@ -594,13 +655,6 @@ if (d > 0.65) spotted = true;</div>`;
     const lerpTarget = { pos: new Vector(W * 0.7, H * 0.4), vel: new Vector(96, 66) };  // px/s
     const camera3 = new Vector(W / 2, H / 2);
     let lerpFactor = 0.05;
-    let lerpSliderInit = false;
-
-    function initLerpSlider() {
-      if (lerpSliderInit) return;
-      lerpSliderInit = true;
-      // slider is rendered in info panel, attach after render
-    }
 
     function updateDemo3(dt) {
       // Bounce target
@@ -641,29 +695,11 @@ if (d > 0.65) spotted = true;</div>`;
       // Camera (blue)
       drawCircle(camera3, 10, '#4cc9f0', 'Camera');
 
-      document.getElementById('info').innerHTML = `
-    <h3>Lerp Follow</h3>
-    <p>The camera <span style="color:var(--accent)">lerps</span> toward the target each frame. Adjust the factor to change how snappy or smooth it feels.</p>
-    <div class="val-row"><span class="val-label">camera.x</span><span class="val-num">${n1(camera3.x)}</span></div>
-    <div class="val-row"><span class="val-label">camera.y</span><span class="val-num">${n1(camera3.y)}</span></div>
-    <div class="val-row"><span class="val-label">target.x</span><span class="val-num">${n1(lerpTarget.pos.x)}</span></div>
-    <div class="val-row"><span class="val-label">target.y</span><span class="val-num">${n1(lerpTarget.pos.y)}</span></div>
-    <div class="val-row"><span class="val-label">distance</span><span class="val-num">${n1(dist)}</span></div>
-    <div class="slider-row">
-      <label>lerp factor</label>
-      <input type="range" id="lerpSlider" min="1" max="30" value="${Math.round(lerpFactor * 100)}"
-        oninput="lerpFactor = this.value / 100; document.getElementById('lerpVal').textContent = lerpFactor.toFixed(2)">
-      <span class="slider-val" id="lerpVal">${lerpFactor.toFixed(2)}</span>
-    </div>
-    <div class="legend">
-      <div class="legend-item"><div class="dot" style="background:var(--pink)"></div>moving target</div>
-      <div class="legend-item"><div class="dot" style="background:var(--accent)"></div>camera (lerps toward target)</div>
-    </div>
-    <div class="code-block">// Called every frame:
-camera.lerp(target, ${lerpFactor.toFixed(2)});
-
-// Each call moves camera
-// ${Math.round(lerpFactor * 100)}% closer to target.</div>`;
+      document.getElementById('d3-cx').textContent = n1(camera3.x);
+      document.getElementById('d3-cy').textContent = n1(camera3.y);
+      document.getElementById('d3-tx').textContent = n1(lerpTarget.pos.x);
+      document.getElementById('d3-ty').textContent = n1(lerpTarget.pos.y);
+      document.getElementById('d3-dist').textContent = n1(dist);
     }
 
     // =============================================================================
@@ -675,6 +711,7 @@ camera.lerp(target, ${lerpFactor.toFixed(2)});
     function setDemo(i) {
       currentDemo = i;
       document.querySelectorAll('.tab').forEach((t, idx) => t.classList.toggle('active', idx === i));
+      document.querySelectorAll('.info').forEach((p, idx) => p.style.display = idx === i ? '' : 'none');
     }
 
     let lastTime = 0;

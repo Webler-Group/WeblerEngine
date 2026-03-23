@@ -132,7 +132,92 @@
 
   <div class="demo-area">
     <canvas id="canvas" width="560" height="420"></canvas>
-    <div class="info" id="info"></div>
+
+    <!-- Panel 0: Unit Circle & Normalization -->
+    <div class="info" id="panel-0">
+      <h3>Unit Circle & Normalization</h3>
+      <p>Move your mouse. The <span style="color:var(--accent)">cyan arrow</span> always points in the same direction but has length = 1 — it lives on the <b>unit circle</b>.</p>
+      <div class="val-row"><span class="val-label">raw.x</span><span class="val-num" id="d0-raw-x">0</span></div>
+      <div class="val-row"><span class="val-label">raw.y</span><span class="val-num" id="d0-raw-y">0</span></div>
+      <div class="val-row"><span class="val-label">raw.length()</span><span class="val-num" id="d0-raw-len">0</span></div>
+      <div class="val-row"><span class="val-label">normalized.x</span><span class="val-num" id="d0-norm-x">0</span></div>
+      <div class="val-row"><span class="val-label">normalized.y</span><span class="val-num" id="d0-norm-y">0</span></div>
+      <div class="val-row"><span class="val-label">normalized length</span><span class="val-num" id="d0-norm-len">—</span></div>
+      <div class="val-row"><span class="val-label">angle</span><span class="val-num" id="d0-angle">0</span></div>
+      <div class="code-block">const raw = mouse.clone().sub(origin);
+const dir = raw.clone().normalize();
+// dir.length() is always 1
+// dir.angle() = raw.angle()</div>
+    </div>
+
+    <!-- Panel 1: Dot Product -->
+    <div class="info" id="panel-1" style="display:none">
+      <h3>Dot Product</h3>
+      <p>Move your mouse to rotate <span style="color:var(--accent)">vector A</span>. <span style="color:var(--pink)">Vector B</span> rotates automatically.</p>
+      <div class="val-row"><span class="val-label">dot product</span><span class="val-num" id="d1-dot">0</span></div>
+      <div class="val-row"><span class="val-label">angle between</span><span class="val-num" id="d1-angle">0</span></div>
+      <div class="val-row"><span class="val-label">meaning</span><span class="val-num" id="d1-meaning">—</span></div>
+      <div class="val-row"><span class="val-label">cross (sign)</span><span class="val-num" id="d1-cross">0</span></div>
+      <div class="legend">
+        <div class="legend-item"><div class="dot" style="background:#ffffff30;border:1px dashed #fff3"></div>projection of A onto B</div>
+      </div>
+      <div class="code-block">// Both must be unit vectors for
+// dot = cos(angle) to hold:
+const d = a.dot(b);
+// d > 0 → same direction
+// d = 0 → perpendicular
+// d < 0 → opposite</div>
+    </div>
+
+    <!-- Panel 2: Lerp Comparison -->
+    <div class="info" id="panel-2" style="display:none">
+      <h3>Lerp Factor Comparison</h3>
+      <p>All three circles chase the same target using <b>lerp</b> with different factors. Higher <code>t</code> = snappier, lower = smoother lag.</p>
+      <div class="val-row"><span class="val-label">target.x</span><span class="val-num" id="d2-tx">0</span></div>
+      <div class="val-row"><span class="val-label">target.y</span><span class="val-num" id="d2-ty">0</span></div>
+      <div class="val-row">
+        <span class="val-label" style="color:#4cc9f0">Lazy  t=0.02</span>
+        <span class="val-num" id="d2-dist-0">Δ0px</span>
+      </div>
+      <div class="val-row">
+        <span class="val-label" style="color:#4ade80">Smooth t=0.08</span>
+        <span class="val-num" id="d2-dist-1">Δ0px</span>
+      </div>
+      <div class="val-row">
+        <span class="val-label" style="color:#f72585">Snappy t=0.35</span>
+        <span class="val-num" id="d2-dist-2">Δ0px</span>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="dot" style="background:#4cc9f0"></div>Lazy  t=0.02</div>
+        <div class="legend-item"><div class="dot" style="background:#4ade80"></div>Smooth t=0.08</div>
+        <div class="legend-item"><div class="dot" style="background:#f72585"></div>Snappy t=0.35</div>
+      </div>
+      <div class="code-block">// Each frame:
+camera.lerp(target, t);
+
+// t=0.02 → floaty
+// t=0.08 → smooth camera
+// t=0.35 → instant snap</div>
+    </div>
+
+    <!-- Panel 3: Rotate & Angle -->
+    <div class="info" id="panel-3" style="display:none">
+      <h3>fromAngle() & angle()</h3>
+      <p>Move your mouse <b>horizontally</b> to rotate the vector through −π to +π.</p>
+      <div class="val-row"><span class="val-label">angle (radians)</span><span class="val-num" id="d3-rad">0</span></div>
+      <div class="val-row"><span class="val-label">angle (degrees)</span><span class="val-num" id="d3-deg">0</span></div>
+      <div class="val-row"><span class="val-label">vec.x = cos(angle)</span><span class="val-num" id="d3-vx">0</span></div>
+      <div class="val-row"><span class="val-label">vec.y = sin(angle)</span><span class="val-num" id="d3-vy">0</span></div>
+      <div class="val-row"><span class="val-label">vec.length()</span><span class="val-num">1.00</span></div>
+      <div class="val-row"><span class="val-label">vec.angle() round-trip</span><span class="val-num" id="d3-roundtrip">0</span></div>
+      <div class="code-block">const vec = Vector.fromAngle(rad);
+// vec.x = Math.cos(rad)
+// vec.y = Math.sin(rad)
+// vec.length() = 1
+
+vec.angle(); // recovers rad
+// Range: (-π, π]</div>
+    </div>
   </div>
 
   <script>
@@ -311,20 +396,15 @@
       ctx.fillText(`len=${n1(len)}`, mid.x + 6, mid.y - 4);
       ctx.restore();
 
-      document.getElementById('info').innerHTML = `
-        <h3>Unit Circle & Normalization</h3>
-        <p>Move your mouse. The <span style="color:var(--accent)">cyan arrow</span> always points in the same direction but has length = 1 — it lives on the <b>unit circle</b>.</p>
-        <div class="val-row"><span class="val-label">raw.x</span><span class="val-num">${n2(raw.x)}</span></div>
-        <div class="val-row"><span class="val-label">raw.y</span><span class="val-num">${n2(raw.y)}</span></div>
-        <div class="val-row"><span class="val-label">raw.length()</span><span class="val-num ${len > UNIT_R ? 'warn' : ''}">${n2(len)}</span></div>
-        <div class="val-row"><span class="val-label">normalized.x</span><span class="val-num">${n2(norm.x)}</span></div>
-        <div class="val-row"><span class="val-label">normalized.y</span><span class="val-num">${n2(norm.y)}</span></div>
-        <div class="val-row"><span class="val-label">normalized length</span><span class="val-num">${len > 0 ? '1.00' : '—'}</span></div>
-        <div class="val-row"><span class="val-label">angle</span><span class="val-num">${n2(norm.angle())} rad</span></div>
-        <div class="code-block">const raw = mouse.clone().sub(origin);
-const dir = raw.clone().normalize();
-// dir.length() is always 1
-// dir.angle() = raw.angle()</div>`;
+      document.getElementById('d0-raw-x').textContent = n2(raw.x);
+      document.getElementById('d0-raw-y').textContent = n2(raw.y);
+      const d0RawLen = document.getElementById('d0-raw-len');
+      d0RawLen.textContent = n2(len);
+      d0RawLen.className = 'val-num' + (len > UNIT_R ? ' warn' : '');
+      document.getElementById('d0-norm-x').textContent = n2(norm.x);
+      document.getElementById('d0-norm-y').textContent = n2(norm.y);
+      document.getElementById('d0-norm-len').textContent = len > 0 ? '1.00' : '—';
+      document.getElementById('d0-angle').textContent = n2(norm.angle()) + ' rad';
     }
 
     // =============================================================================
@@ -409,22 +489,17 @@ const dir = raw.clone().normalize();
       const meaning = dot > 0.1 ? 'same direction' : dot < -0.1 ? 'opposite' : 'perpendicular';
       const cls     = dot > 0.1 ? '' : dot < -0.1 ? 'danger' : 'warn';
 
-      document.getElementById('info').innerHTML = `
-        <h3>Dot Product</h3>
-        <p>Move your mouse to rotate <span style="color:var(--accent)">vector A</span>. <span style="color:var(--pink)">Vector B</span> rotates automatically.</p>
-        <div class="val-row"><span class="val-label">dot product</span><span class="val-num ${cls}">${n2(dot)}</span></div>
-        <div class="val-row"><span class="val-label">angle between</span><span class="val-num">${deg(angle)}°</span></div>
-        <div class="val-row"><span class="val-label">meaning</span><span class="val-num ${cls}">${meaning}</span></div>
-        <div class="val-row"><span class="val-label">cross (sign)</span><span class="val-num">${sign > 0 ? '+' : '−'} (${sign > 0 ? 'CCW' : 'CW'})</span></div>
-        <div class="legend">
-          <div class="legend-item"><div class="dot" style="background:#ffffff30;border:1px dashed #fff3"></div>projection of A onto B</div>
-        </div>
-        <div class="code-block">// Both must be unit vectors for
-// dot = cos(angle) to hold:
-const d = a.dot(b);
-// d > 0 → same direction
-// d = 0 → perpendicular
-// d < 0 → opposite</div>`;
+      const d1Dot = document.getElementById('d1-dot');
+      d1Dot.textContent = n2(dot);
+      d1Dot.className = 'val-num' + (cls ? ' ' + cls : '');
+
+      document.getElementById('d1-angle').textContent = deg(angle) + '°';
+
+      const d1Meaning = document.getElementById('d1-meaning');
+      d1Meaning.textContent = meaning;
+      d1Meaning.className = 'val-num' + (cls ? ' ' + cls : '');
+
+      document.getElementById('d1-cross').textContent = (sign > 0 ? '+' : '−') + ' (' + (sign > 0 ? 'CCW' : 'CW') + ')';
     }
 
     // =============================================================================
@@ -473,23 +548,11 @@ const d = a.dot(b);
       // Target
       drawCircle(lerpTarget2.pos, 15, '#ffffff60', 'Target');
 
-      document.getElementById('info').innerHTML = `
-        <h3>Lerp Factor Comparison</h3>
-        <p>All three circles chase the same target using <b>lerp</b> with different factors. Higher <code>t</code> = snappier, lower = smoother lag.</p>
-        <div class="val-row"><span class="val-label">target.x</span><span class="val-num">${n1(lerpTarget2.pos.x)}</span></div>
-        <div class="val-row"><span class="val-label">target.y</span><span class="val-num">${n1(lerpTarget2.pos.y)}</span></div>
-        ${cameras.map(c => `
-        <div class="val-row"><span class="val-label" style="color:${c.color}">${c.label}</span>
-          <span class="val-num">Δ${n1(c.pos.distance(lerpTarget2.pos))}px</span></div>`).join('')}
-        <div class="legend">
-          ${cameras.map(c => `<div class="legend-item"><div class="dot" style="background:${c.color}"></div>${c.label}</div>`).join('')}
-        </div>
-        <div class="code-block">// Each frame:
-camera.lerp(target, t);
-
-// t=0.02 → floaty
-// t=0.08 → smooth camera
-// t=0.35 → instant snap</div>`;
+      document.getElementById('d2-tx').textContent = n1(lerpTarget2.pos.x);
+      document.getElementById('d2-ty').textContent = n1(lerpTarget2.pos.y);
+      document.getElementById('d2-dist-0').textContent = 'Δ' + n1(cameras[0].pos.distance(lerpTarget2.pos)) + 'px';
+      document.getElementById('d2-dist-1').textContent = 'Δ' + n1(cameras[1].pos.distance(lerpTarget2.pos)) + 'px';
+      document.getElementById('d2-dist-2').textContent = 'Δ' + n1(cameras[2].pos.distance(lerpTarget2.pos)) + 'px';
     }
 
     // =============================================================================
@@ -570,22 +633,11 @@ camera.lerp(target, t);
       ctx.fillText(n2(demo3angle) + ' rad', arcMid.x + 4, arcMid.y);
       ctx.restore();
 
-      document.getElementById('info').innerHTML = `
-        <h3>fromAngle() & angle()</h3>
-        <p>Move your mouse <b>horizontally</b> to rotate the vector through −π to +π.</p>
-        <div class="val-row"><span class="val-label">angle (radians)</span><span class="val-num">${n2(demo3angle)}</span></div>
-        <div class="val-row"><span class="val-label">angle (degrees)</span><span class="val-num">${deg(demo3angle)}°</span></div>
-        <div class="val-row"><span class="val-label">vec.x = cos(angle)</span><span class="val-num">${n2(vec.x)}</span></div>
-        <div class="val-row"><span class="val-label">vec.y = sin(angle)</span><span class="val-num">${n2(vec.y)}</span></div>
-        <div class="val-row"><span class="val-label">vec.length()</span><span class="val-num">1.00</span></div>
-        <div class="val-row"><span class="val-label">vec.angle() round-trip</span><span class="val-num">${n2(vec.angle())}</span></div>
-        <div class="code-block">const vec = Vector.fromAngle(rad);
-// vec.x = Math.cos(rad)
-// vec.y = Math.sin(rad)
-// vec.length() = 1
-
-vec.angle(); // recovers rad
-// Range: (-π, π]</div>`;
+      document.getElementById('d3-rad').textContent = n2(demo3angle);
+      document.getElementById('d3-deg').textContent = deg(demo3angle) + '°';
+      document.getElementById('d3-vx').textContent = n2(vec.x);
+      document.getElementById('d3-vy').textContent = n2(vec.y);
+      document.getElementById('d3-roundtrip').textContent = n2(vec.angle());
     }
 
     // =============================================================================
@@ -597,6 +649,7 @@ vec.angle(); // recovers rad
     function setDemo(i) {
       currentDemo = i;
       document.querySelectorAll('.tab').forEach((t, idx) => t.classList.toggle('active', idx === i));
+      document.querySelectorAll('.info').forEach((p, idx) => p.style.display = idx === i ? '' : 'none');
     }
 
     let lastTime = 0;

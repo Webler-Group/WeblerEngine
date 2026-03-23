@@ -34,17 +34,29 @@
         },
         {
           "type": 2,
-          "text": "A player is at `(100, 50)` and an enemy is at `(400, 200)`. Which code gives the vector pointing **from the player toward the enemy**?",
+          "text": "A player is at (100, 50) and an enemy is at (400, 200). Which code gives the vector pointing from the player toward the enemy?",
           "answers": [
-            { "text": "`enemy.clone().sub(player)`", "correct": true },
-            { "text": "`player.clone().sub(enemy)`", "correct": false },
-            { "text": "`player.clone().add(enemy)`", "correct": false },
-            { "text": "`enemy.clone().add(player)`", "correct": false }
+            {
+              "text": "enemy.clone().sub(player)",
+              "correct": true
+            },
+            {
+              "text": "player.clone().sub(enemy)",
+              "correct": false
+            },
+            {
+              "text": "player.clone().add(enemy)",
+              "correct": false
+            },
+            {
+              "text": "enemy.clone().add(player)",
+              "correct": false
+            }
           ]
         },
         {
           "type": 4,
-          "text": "What is the result of `new Vector(3, 4).length()`? (answer with a number)",
+          "text": "What is the result of new Vector(3, 4).length()? (answer with a number)",
           "correctAnswer": "5"
         },
         {
@@ -78,38 +90,58 @@
           "text": "## Lerp — Linear Interpolation\n\n`lerp(v, t)` moves `this` toward `v` by a factor `t`, where `0` means stay and `1` means jump to target:\n\n```js\nconst a = new Vector(0, 0);\nconst b = new Vector(100, 80);\n\na.lerp(b, 0);    // (0, 0)    — unchanged\na.lerp(b, 0.5);  // (50, 40)  — halfway\na.lerp(b, 1);    // (100, 80) — at target\n```\n\n### Smooth Camera Follow\n\nCalling `lerp` every frame with a small `t` produces smooth, decelerating motion:\n\n```js\n// In the game loop:\ncamera.lerp(player.position, 0.05);\n```\n\nEach frame the camera moves 5% of the remaining distance. The further it is from the player, the faster it catches up — it naturally decelerates. One line of code, no physics needed.\n\n### Choosing the Factor\n\n| t value | Feel |\n|---------|------|\n| 0.02 | Very lazy, floaty follow |\n| 0.05 | Smooth, natural camera |\n| 0.15 | Snappy, responsive |\n| 0.4+ | Almost instant |\n\nNote: `lerp` with small `t` is **frame-rate dependent**. For a physics-correct version, use `lerp(v, 1 - Math.pow(1 - t, dt * 60))`. For simple games the naive version is fine.\n\n### Other Uses\n\n```js\n// Smoothly blend between two colours (as vectors)\nconst color = colorA.clone().lerp(colorB, healthPercent);\n\n// Ease a UI element onto screen\nuiPos.lerp(targetPos, 0.08);\n```"
         },
         {
-          "type": 1,
-          "mode": 1,
-          "text": "## The Full Vector Class\n\nHere is the complete `Vector` class from `src/utils.js`. Every method you have seen across both lessons is here.\n\n```js\nclass Vector {\n  constructor(x = 0, y = 0) { this.x = x; this.y = y; }\n\n  static zero()         { return new Vector(0, 0); }\n  static one()          { return new Vector(1, 1); }\n  static from(v)        { return new Vector(v.x, v.y); }\n  static fromAngle(rad) { return new Vector(Math.cos(rad), Math.sin(rad)); }\n\n  set(x, y)  { this.x = x; this.y = y; return this; }\n  copy(v)    { this.x = v.x; this.y = v.y; return this; }\n  clone()    { return new Vector(this.x, this.y); }\n\n  add(v)   { this.x += v.x; this.y += v.y; return this; }\n  sub(v)   { this.x -= v.x; this.y -= v.y; return this; }\n  mul(v)   { this.x *= v.x; this.y *= v.y; return this; }\n  div(v)   { this.x /= v.x; this.y /= v.y; return this; }\n  scale(s) { this.x *= s;   this.y *= s;   return this; }\n  negate() { this.x = -this.x; this.y = -this.y; return this; }\n\n  normalize() {\n    const len = this.length();\n    if (len > 0) { this.x /= len; this.y /= len; }\n    return this;\n  }\n\n  rotate(rad) {\n    const cos = Math.cos(rad), sin = Math.sin(rad);\n    const x = this.x * cos - this.y * sin;\n    this.y   = this.x * sin + this.y * cos;\n    this.x   = x;\n    return this;\n  }\n\n  lerp(v, t) {\n    this.x += (v.x - this.x) * t;\n    this.y += (v.y - this.y) * t;\n    return this;\n  }\n\n  length()       { return Math.sqrt(this.x * this.x + this.y * this.y); }\n  lengthSq()     { return this.x * this.x + this.y * this.y; }\n  dot(v)         { return this.x * v.x + this.y * v.y; }\n  cross(v)       { return this.x * v.y - this.y * v.x; }\n  distance(v)    { const dx = this.x-v.x, dy = this.y-v.y; return Math.sqrt(dx*dx+dy*dy); }\n  distanceSq(v)  { const dx = this.x-v.x, dy = this.y-v.y; return dx*dx+dy*dy; }\n  angle()        { return Math.atan2(this.y, this.x); }\n  equals(v, e=0) { return Math.abs(this.x-v.x)<=e && Math.abs(this.y-v.y)<=e; }\n  toString()     { return `Vector(${this.x}, ${this.y})`; }\n}\n```\n\nIn the next lesson we will use vectors as the foundation of our first engine class: the **SceneNode** transform."
-        },
-        {
           "type": 2,
-          "text": "You have `const dir = target.clone().sub(obj.pos)`. To move `obj` toward `target` at exactly 200 px/s, what do you do next?",
+          "text": "You have: const dir = target.clone().sub(obj.pos). To move obj toward target at exactly 200 px/s, what do you do next?",
           "answers": [
-            { "text": "`dir.normalize().scale(200)`", "correct": true },
-            { "text": "`dir.scale(200)`", "correct": false },
-            { "text": "`dir.scale(200).normalize()`", "correct": false },
-            { "text": "`dir.length(200)`", "correct": false }
+            {
+              "text": "dir.normalize().scale(200)",
+              "correct": true
+            },
+            {
+              "text": "dir.scale(200)",
+              "correct": false
+            },
+            {
+              "text": "dir.scale(200).normalize()",
+              "correct": false
+            },
+            {
+              "text": "dir.length(200)",
+              "correct": false
+            }
           ]
         },
         {
           "type": 2,
-          "text": "Two **unit** vectors have a dot product of `-0.5`. This means...",
+          "text": "Two unit vectors have a dot product of -0.5. This means...",
           "answers": [
-            { "text": "They point in roughly opposite directions (angle > 90°)", "correct": true },
-            { "text": "They are perpendicular", "correct": false },
-            { "text": "They point in the same direction", "correct": false },
-            { "text": "At least one of them is not a unit vector", "correct": false }
+            {
+              "text": "They point in roughly opposite directions (angle > 90°)",
+              "correct": true
+            },
+            {
+              "text": "They are perpendicular",
+              "correct": false
+            },
+            {
+              "text": "They point in the same direction",
+              "correct": false
+            },
+            {
+              "text": "At least one of them is not a unit vector",
+              "correct": false
+            }
           ]
         },
         {
           "type": 4,
-          "text": "After calling `normalize()` on a non-zero vector, what is its length? (answer with a number)",
+          "text": "After calling normalize() on a non-zero vector, what is its length? (answer with a number)",
           "correctAnswer": "1"
         },
         {
           "type": 5,
-          "mode": 1
+          "mode": 1,
+          "codeId": "69bf08c3334b9c85c171ba9a"
         }
       ]
     },
@@ -129,8 +161,45 @@
         {
           "type": 1,
           "mode": 1,
-          "text": "## Scene Nodes — The Building Blocks\n\nEvery object in your scene **extends** `SceneNode`:\n\n```js\nclass Player extends SceneNode {\n  constructor(startPos) {\n    super();  // auto-assigns id, sets up transform\n    this.name = 'player';         // optional name for findNode()\n    this.position.copy(startPos); // place in world\n    this.speed = 200;\n  }\n\n  start() {\n    // Called once when node enters the scene.\n    // The node is fully live here — this.scene is set.\n  }\n\n  update(dt) {\n    // Called every frame. dt = delta time in seconds.\n    this.position.x += this.speed * dt;\n\n    if (this.position.x > 700) {\n      this.scene.removeNode(this);   // remove self\n    }\n  }\n\n  destroy() {\n    // Called when removed. Clean up event listeners, etc.\n  }\n}\n```\n\n### Nodes Can Talk to Each Other\n\nEvery node has a `scene` reference, so nodes can interact with their siblings:\n\n```js\n// Find a node by name:\nconst hud = this.scene.findNode('hud');\nhud.showDamageEffect();\n\n// Spawn a child:\nthis.scene.addNode(new Explosion(this.position.clone()));\n```\n\n### Auto-incrementing IDs\n\n`SceneNode._nextId` is incremented each time a node is constructed, so every node gets a unique numeric `id`. This is useful for debugging and for systems that need to track nodes by identity rather than name."
+          "text": "## Scene Nodes — The Building Blocks\n\nEvery object in your scene **extends** `SceneNode`:\n\n```js\nclass Player extends SceneNode {\n  constructor(startPos) {\n    super();  // auto-assigns id, sets up transform\n    this.name = 'player';         // optional name for findNode()\n    this.position.copy(startPos); // place in world\n    this.speed = 200;\n  }\n\n  start() {\n    // Called once when node enters the scene.\n    // The node is fully live here — this.scene is set.\n  }\n\n  update(dt) {\n    // Called every frame. dt = delta time in seconds.\n    this.position.x += this.speed * dt;\n\n    if (this.position.x > 700) {\n      this.scene.removeNode(this);   // remove self\n    }\n  }\n\n  destroy() {\n    // Called when removed. Clean up event listeners, etc.\n    super.destroy();  // always call super — clears internal event listeners\n  }\n}\n```\n\n### Nodes Can Talk to Each Other\n\nEvery node has a `scene` reference, so nodes can interact with their siblings:\n\n```js\n// Find a node by name:\nconst hud = this.scene.findNode('hud');\nhud.showDamageEffect();\n\n// Spawn a child:\nthis.scene.addNode(new Explosion(this.position.clone()));\n```\n\n### Auto-incrementing IDs\n\n`SceneNode._nextId` is incremented each time a node is constructed, so every node gets a unique numeric `id`. This is useful for debugging and for systems that need to track nodes by identity rather than name."
         },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Managing Scene State\n\nWhen multiple nodes need to share data — score, lives, wave number, game phase — you need a single source of truth. The wrong place for that data is the `Scene` object itself (it is a plain container with fixed properties). The right place is a dedicated **state node**.\n\n### SceneStateNode\n\nExtend `SceneNode` to create a node whose only job is to hold scene-level data. It lives in the scene alongside every other node and can be found by type from anywhere:\n\n```js\nclass GameState extends SceneNode {\n  constructor() {\n    super();\n    this.name  = 'gameState';\n    this.score = 0;\n    this.lives = 3;\n    this.wave  = 1;\n  }\n\n  // update(dt) can drive timers, phase transitions, win/lose checks.\n  update(dt) {\n    if (this.lives <= 0) {\n      // Switch to game-over scene from within the state node.\n      sm.switchScene('gameOver', { finalScore: this.score });\n    }\n  }\n}\n```\n\n### Setting Up and Reading State\n\nAdd the state node **first** in the init function so it is live before any other node's `start()` runs:\n\n```js\nsm.register('game', (scene, params) => {\n  scene.addNode(new GameState());   // always first\n  scene.addNode(new Player());\n  scene.addNode(new HUD());\n  scene.addNode(new EnemySpawner());\n});\n```\n\nAny node reads or writes state through `findNodesByType`:\n\n```js\nclass Enemy extends SceneNode {\n  destroy() {\n    const [state] = this.scene.findNodesByType(GameState);\n    state.score += 100;\n  }\n}\n\nclass HUD extends SceneNode {\n  update(dt) {\n    const [state] = this.scene.findNodesByType(GameState);\n    this.scoreText = state.score;\n    this.livesText = state.lives;\n  }\n}\n```\n\n### Why a Node, Not a Global\n\n- **Scoped to the scene** — destroyed automatically with the scene; no stale state leaks between sessions.\n- **Has a lifecycle** — its `update` can drive timers, check win/lose conditions, trigger scene switches.\n- **Consistent access pattern** — every node reaches state the same way, through `this.scene`."
+        },
+        {
+          "type": 2,
+          "text": "What happens to the active scene when sm.switchScene() is called with a new scene name?",
+          "answers": [
+            {
+              "text": "The active scene is destroyed, then the new scene is created and started",
+              "correct": true
+            },
+            {
+              "text": "The active scene is paused and can be resumed later",
+              "correct": false
+            },
+            {
+              "text": "Both scenes run simultaneously",
+              "correct": false
+            },
+            {
+              "text": "Nothing — only one scene can ever be registered at a time",
+              "correct": false
+            }
+          ]
+        },
+        {
+          "type": 4,
+          "text": "What method of Scene do you call to safely add a SceneNode to a running scene?",
+          "correctAnswer": "addNode"
+        }
+      ]
+    },
+    {
+      "title": "SceneNode Transforms & Events",
+      "nodes": [
         {
           "type": 1,
           "mode": 1,
@@ -147,33 +216,253 @@
           "text": "## World vs Local Space — and setParent in Depth\n\n### Local Space\n\n`node.position` is the node's position *relative to its parent*. It never changes unless you change it. When the parent moves, the child's local position stays the same — but its world position changes.\n\n### World Space\n\nWorld position is the absolute canvas coordinate. You get it by walking the parent chain:\n\n```js\nship.position.set(300, 200);    // ship at canvas (300, 200)\nturret.position.set(0, -25);    // turret local: 25px above ship\n\n// getWorldPosition() chains: ship(300,200) + turret(0,-25) = (300, 175)\nconst wp = turret.getWorldPosition();  // Vector(300, 175)\n\nship.position.x += 50;          // ship moves right\nturret.getWorldPosition();      // now Vector(350, 175)\n// turret.position is still (0, -25) — local unchanged\n```\n\nSame logic applies to angle (`getWorldAngle()`) and scale (`getWorldScale()`).\n\n### setParent(node, keepWorldPosition)\n\nBy default, `setParent` just links the parent — the node's local position is unchanged, which means it teleports in world space. Pass `true` as the second argument to recalculate the local transform so the node *stays where it is* in world space:\n\n```js\n// turret is at world (300, 175)\nturret.setParent(null);                   // detach — stays at local (0, -25), world (0, -25)\nturret.setParent(null, true);             // detach — local recalculated, world stays (300, 175)\nturret.setParent(otherShip, true);        // reparent — stays at world (300, 175)\n```\n\nThe `keepWorldPosition = true` flag is indispensable any time you reparent a node mid-game without wanting it to jump."
         },
         {
+          "type": 1,
+          "mode": 1,
+          "text": "## Events — SceneNode as an Event Emitter\n\nNodes communicate through `this.scene.findNode()`, but that creates tight coupling: the caller must know the exact name and API of every node it touches. Add more reactions — audio, achievements, save system — and the calling node keeps growing.\n\nThe event system inverts this: a node *emits* that something happened; interested nodes subscribe independently.\n\n### on(type, handler) — Subscribe\n\n```js\nconst enemy = new Enemy();\n\nenemy.on('died', (event) => {\n  console.log('Enemy died at', event.data.position);\n  // event = { type: 'died', data: { position: Vector }, target: enemy }\n});\n```\n\nThe handler receives a `SceneNodeEvent`: `{ type, data, target }` — the event type string, the optional data payload, and the node that emitted it.\n\n### emit(type, data) — Dispatch\n\n```js\n// Inside Enemy's update():\nif (this.hp <= 0) {\n  this.emit('died', { position: this.position.clone() });\n  this.scene.removeNode(this);\n}\n```\n\nAll listeners for `'died'` on this node are called synchronously in registration order.\n\n### once(type, handler) — One-time Listener\n\n```js\nenemy.once('died', (event) => {\n  // Fires the first time 'died' is emitted — then auto-removes.\n  achievements.unlock('first-kill');\n});\n```\n\n`once` works exactly like `on`, but the listener removes itself automatically after its first call.\n\n### off(type, handler) — Unsubscribe\n\n```js\nconst handler = (event) => { /* ... */ };\nenemy.on('attacked', handler);\n// Later:\nenemy.off('attacked', handler);   // pass the same function reference\n```\n\nKeep a reference to the handler function if you need to remove it — `off` matches by identity.\n\n### Why Events?\n\nWith direct calls, the emitter must know all its receivers:\n\n```js\n// Tight coupling — Enemy must know about HUD, audio, achievements\nconst hud = this.scene.findNode('hud');\nhud.addScore(100);\naudio.play('enemy-death');\nachievements.check('first-kill');\n```\n\nWith events, each receiver subscribes on its own:\n\n```js\n// In Enemy — announce the fact, know nothing about who reacts\nthis.emit('died', { score: 100 });\n\n// In HUD, Audio, Achievements — each subscribes independently\nenemy.on('died', (e) => hud.addScore(e.data.score));\nenemy.on('died', () => audio.play('enemy-death'));\nenemy.on('died', () => achievements.check('first-kill'));\n```\n\nThe enemy no longer knows or cares who is listening. New systems can react to the event without touching the enemy's code at all."
+        },
+        {
           "type": 2,
-          "text": "In a `SceneNode`, what does `node.position` represent?",
+          "text": "In a SceneNode, what does node.position represent?",
           "answers": [
-            { "text": "The node's position in local space, relative to its parent", "correct": true },
-            { "text": "The node's absolute position on the canvas", "correct": false },
-            { "text": "The parent node's world position", "correct": false },
-            { "text": "The velocity of the node", "correct": false }
+            {
+              "text": "The node's position in local space, relative to its parent",
+              "correct": true
+            },
+            {
+              "text": "The node's absolute position on the canvas",
+              "correct": false
+            },
+            {
+              "text": "The parent node's world position",
+              "correct": false
+            },
+            {
+              "text": "The velocity of the node",
+              "correct": false
+            }
           ]
         },
         {
           "type": 2,
-          "text": "A `turret` node is a child of `ship`. The turret's local position is `(0, -25)`. You then set `ship.angle = Math.PI / 2`. What happens to `turret.position`?",
+          "text": "A turret node is a child of ship. The turret's local position is (0, -25). You then set ship.angle = Math.PI / 2. What happens to turret.position?",
           "answers": [
-            { "text": "It stays `(0, -25)` — local position is unchanged", "correct": true },
-            { "text": "It becomes `(25, 0)` — rotated with the ship", "correct": false },
-            { "text": "It is reset to `(0, 0)`", "correct": false },
-            { "text": "It matches the ship's world position", "correct": false }
+            {
+              "text": "It stays (0, -25) — local position is unchanged",
+              "correct": true
+            },
+            {
+              "text": "It becomes `(25, 0)` — rotated with the ship",
+              "correct": false
+            },
+            {
+              "text": "It is reset to `(0, 0)`",
+              "correct": false
+            },
+            {
+              "text": "It matches the ship's world position",
+              "correct": false
+            }
+          ]
+        },
+        {
+          "type": 2,
+          "text": "Which SceneNode method registers a listener that automatically removes itself after firing once?",
+          "answers": [
+            {
+              "text": "once(type, handler)",
+              "correct": true
+            },
+            {
+              "text": "on(type, handler)",
+              "correct": false
+            },
+            {
+              "text": "off(type, handler)",
+              "correct": false
+            },
+            {
+              "text": "emit(type, data)",
+              "correct": false
+            }
           ]
         },
         {
           "type": 4,
-          "text": "What method of `Scene` do you call to safely add a `SceneNode` to a running scene?",
-          "correctAnswer": "addNode"
+          "text": "What property of the SceneNodeEvent object passed to a listener tells you which node dispatched the event?",
+          "correctAnswer": "target"
         },
         {
           "type": 5,
-          "mode": 1
+          "mode": 1,
+          "codeId": "69bf08f7334b9c85c171baa3"
+        }
+      ]
+    },
+    {
+      "title": "Graphics in Canvas",
+      "nodes": [
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Raster Graphics\n\nThere are two fundamental ways a computer can represent an image.\n\n**Vector graphics** describe shapes mathematically — lines, curves, fills defined by equations. Scale them up and they stay perfectly sharp because the math is recalculated at any resolution.\n\n**Raster graphics** (also called *bitmap* graphics) describe an image as a flat grid of coloured squares called **pixels**. There are no shapes — only a rectangle of colour data. Scale a raster image up and it blurs or pixelates, because you are stretching a fixed number of pixels across a larger area.\n\nThe HTML `<canvas>` element is a **raster surface**. When you draw a circle, you are not storing a circle — you are telling the browser to paint the appropriate pixels right now. Once drawn, those pixels have no memory of the shape that created them.\n\n### Implications for a Game Engine\n\n| Property | Consequence |\n|---|---|\n| Drawing is immediate | There is no \"scene\" in the canvas — clearing and redrawing every frame is normal |\n| Pixels have no identity | You cannot \"move\" a drawn object — you must clear and redraw it |\n| Coordinate origin is top-left | `(0, 0)` is the top-left corner; y increases downward |\n| Resolution is fixed at creation | The canvas pixel dimensions are set on the element; CSS size is separate |\n\nThis is why a game engine maintains its own scene graph — the canvas itself has no concept of objects. Every frame, our `Renderer` reads the scene graph, clears the canvas, and repaints every visible node from scratch."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Canvas API Basics\n\nAn HTML canvas is just a `<canvas>` element. All drawing goes through a **2D rendering context** obtained from it:\n\n```js\nconst canvas = document.getElementById('game');\nconst ctx    = canvas.getContext('2d');\n```\n\n`ctx` is a `CanvasRenderingContext2D` — the object with all the drawing methods.\n\n### Rectangles\n\nThe simplest shape. `fillRect` and `strokeRect` skip `beginPath`:\n\n```js\nctx.fillStyle = '#3498db';\nctx.fillRect(50, 50, 100, 60);    // filled rectangle at (50,50), 100×60\n\nctx.strokeStyle = '#fff';\nctx.lineWidth = 2;\nctx.strokeRect(50, 50, 100, 60);  // outline only\n```\n\n### Circles\n\nCircles use the path model — `beginPath`, `arc`, then fill/stroke:\n\n```js\nctx.beginPath();\nctx.arc(200, 150, 30, 0, Math.PI * 2);  // center (200,150), radius 30, full circle\nctx.fillStyle = '#e74c3c';\nctx.fill();\n```\n\n### Lines\n\n```js\nctx.beginPath();\nctx.moveTo(10, 10);   // lift pen, move to start\nctx.lineTo(200, 80);  // draw to this point\nctx.strokeStyle = '#fff';\nctx.lineWidth = 3;\nctx.stroke();\n```\n\n### Polygons\n\nA polygon is a path with multiple `lineTo` calls and `closePath` to join the last point back to the first:\n\n```js\nctx.beginPath();\nctx.moveTo(100, 20);   // tip\nctx.lineTo(160, 120);  // bottom-right\nctx.lineTo(40,  120);  // bottom-left\nctx.closePath();       // back to tip — closes the shape\nctx.fillStyle = '#f1c40f';\nctx.fill();\nctx.strokeStyle = '#e67e22';\nctx.lineWidth = 2;\nctx.stroke();\n```\n\n### Text\n\n```js\nctx.font = '24px monospace';\nctx.fillStyle = '#fff';\nctx.fillText('Score: 100', 20, 40);   // text, x, y (baseline)\n\nctx.textAlign = 'center';\nctx.fillText('GAME OVER', 400, 300);\n\nctx.textBaseline = 'middle';           // vertical anchor\n```\n\n`fillText` draws filled text; `strokeText` draws an outline. `textAlign` accepts `'left'`, `'center'`, or `'right'`; `textBaseline` accepts `'top'`, `'middle'`, or `'bottom'`."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Drawable — The Drawing Contract\n\n`Drawable` extends `SceneNode` and adds two things: a `zIndex` number and a `draw(ctx)` method to override.\n\nThe contract is simple: **draw as if your node is at the origin `(0, 0)`, facing right, at scale `(1, 1)`**. The `Renderer` will move the canvas context to the correct world position, rotation, and scale before calling `draw()` — you never need to account for the node's location yourself.\n\n```js\nclass Ship extends Drawable {\n    constructor() {\n        super({ zIndex: 0 });\n    }\n\n    draw(ctx) {\n        // The context is already positioned at this node's world transform.\n        // Draw at (0,0) — the Renderer handles the rest.\n        ctx.beginPath();\n        ctx.moveTo(20, 0);      // nose\n        ctx.lineTo(-15, -12);   // rear-left wing\n        ctx.lineTo(-15,  12);   // rear-right wing\n        ctx.closePath();\n        ctx.fillStyle = '#4ade80';\n        ctx.fill();\n    }\n}\n```\n\nNotice: no `translate`, no `rotate`, no position math inside `draw()`. The shape is always described at the origin — it is the renderer's job to put it in the right place.\n\n### zIndex — Draw Order\n\n`zIndex` controls the draw order across all `Drawable` nodes in the scene. Lower values are drawn first, so they appear behind higher ones:\n\n| zIndex | Typical use |\n|---|---|\n| `-1` | Background tiles, sky |\n| `0` | Default — most game objects |\n| `1` | Projectiles, particle effects |\n| `2` | UI elements, health bars |\n\nDrawables with equal `zIndex` are drawn in the order they appear in `scene.nodes`."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## render() — Step 1: Clear, Step 2: Build Layers\n\n`Renderer.render(drawables)` is called once per frame. It receives a flat array of all `Drawable` nodes — typically gathered like this:\n\n```js\nfunction tick(dt) {\n    sm.update(dt);\n    renderer.render(sm.currentScene.findNodesByType(Drawable));\n}\n```\n\nThe method processes that array in three steps. Here are the first two.\n\n### Step 1 — Clear the Canvas\n\nIf `clearColor` is set, `render()` fills the entire canvas with that colour before drawing anything. This wipes the previous frame:\n\n```js\nif (this.clearColor !== null) {\n    this.ctx.fillStyle = this.clearColor;\n    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);\n}\n```\n\nSetting `clearColor = null` skips the clear — useful when you want to render on top of a CSS background or composite multiple passes.\n\n### Step 2 — Group Drawables into Layer Buckets\n\nSorting the entire drawables array every frame by `zIndex` would be O(n log n). Instead, the renderer makes a **single pass** through the array and groups drawables into buckets by `zIndex` using a `Map`:\n\n```js\nconst layers = new Map();\n\nfor (const drawable of drawables) {\n    const key = `${drawable.zIndex}`;   // '0', '1', '-1', etc.\n    if (!layers.has(key)) {\n        layers.set(key, { zIndex: drawable.zIndex, drawables: [] });\n    }\n    layers.get(key).drawables.push(drawable);\n}\n```\n\nAfter this loop, `layers` maps each zIndex string to a bucket object containing all drawables at that level, in their original scene order. A scene with 200 objects but only 4 distinct zIndex values produces just 4 buckets.\n\nThe buckets are then sorted ascending by `zIndex`:\n\n```js\nconst sorted = [...layers.values()].sort((a, b) => a.zIndex - b.zIndex);\n```\n\nSorting 4 buckets is far cheaper than sorting 200 objects, and insertion order within each bucket is preserved automatically."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## render() — Step 3: Draw Each Drawable\n\nWith the sorted buckets ready, the renderer iterates them from lowest `zIndex` to highest and draws every drawable inside each bucket:\n\n```js\nfor (const layer of sorted) {\n    for (const drawable of layer.drawables) {\n        this.ctx.setTransform(this._computeMatrix(drawable));\n        drawable.draw(this.ctx);\n    }\n}\n\nthis.ctx.resetTransform();\n```\n\nTwo things happen per drawable:\n\n**`setTransform(matrix)`** replaces the canvas context's current transform matrix with the drawable's world transform. After this call, the canvas origin `(0, 0)` lands exactly at the drawable's world position, rotated and scaled correctly. Drawing at `(0, 0)` in `draw()` therefore places the shape in the right spot on screen.\n\n**`drawable.draw(ctx)`** calls the subclass's overridden method. The subclass draws its shapes at the origin — the transform does the rest.\n\nFinally, **`resetTransform()`** resets the matrix to the identity after all drawables are drawn, leaving the context in a clean state for the next frame."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Transform Matrix and DOMMatrix\n\nA **2D affine transform** encodes position, rotation, and scale as a single 3×3 matrix. The third row is always `[0, 0, 1]`, so only 6 numbers actually vary — the browser calls these `a b c d e f`:\n\n```\n| a  c  e |\n| b  d  f |\n| 0  0  1 |\n```\n\nIn terms of the transform components:\n\n```\n| sx·cos(θ)  −sy·sin(θ)  tx |\n| sx·sin(θ)   sy·cos(θ)  ty |\n|          0           0   1 |\n```\n\n| Component | Role |\n|---|---|\n| `a = sx·cos(θ)` | x-axis x-component (scale + rotation) |\n| `b = sx·sin(θ)` | x-axis y-component (scale + rotation) |\n| `c = −sy·sin(θ)` | y-axis x-component (scale + rotation) |\n| `d = sy·cos(θ)` | y-axis y-component (scale + rotation) |\n| `e = tx` | translation x (world position x) |\n| `f = ty` | translation y (world position y) |\n\n### _computeMatrix in the Renderer\n\n`Renderer._computeMatrix(drawable)` reads the node's world transform and builds a `DOMMatrix` directly:\n\n```js\n_computeMatrix(drawable) {\n    const pos   = drawable.getWorldPosition();  // accumulated from parent chain\n    const angle = drawable.getWorldAngle();\n    const scale = drawable.getWorldScale();\n    const cos   = Math.cos(angle);\n    const sin   = Math.sin(angle);\n    return new DOMMatrix([\n        scale.x * cos,   // a\n        scale.x * sin,   // b\n        -scale.y * sin,  // c\n        scale.y * cos,   // d\n        pos.x,           // e (tx)\n        pos.y,           // f (ty)\n    ]);\n}\n```\n\nThe 6-element array constructor maps directly to `[a, b, c, d, e, f]`. One `new DOMMatrix(...)` call, one `ctx.setTransform(matrix)` call — the canvas context is now in the node's world space.\n\n### Why a Matrix?\n\nMatrices compose. To transform a point through a parent and then a child, you multiply the two matrices together. `getWorldPosition()`, `getWorldAngle()`, and `getWorldScale()` each walk the parent chain and combine transforms — the matrix just packages all three into a single GPU-friendly value that `setTransform` can apply atomically in one call."
+        },
+        {
+          "type": 2,
+          "text": "Why does the engine redraw every Drawable to the canvas on every frame, rather than only the objects that moved?",
+          "answers": [
+            {
+              "text": "Canvas pixels have no memory of what drew them — clearing and repainting is the only way to update what is visible",
+              "correct": true
+            },
+            {
+              "text": "The browser automatically clears the canvas between animation frames",
+              "correct": false
+            },
+            {
+              "text": "SceneNode objects are destroyed and recreated each frame",
+              "correct": false
+            },
+            {
+              "text": "setTransform requires a blank canvas to work correctly",
+              "correct": false
+            }
+          ]
+        },
+        {
+          "type": 4,
+          "text": "The Renderer calls ctx.________(matrix) before each draw() call to position the context at the drawable's world transform.",
+          "correctAnswer": "setTransform"
+        },
+        {
+          "type": 2,
+          "text": "In the engine's design, SceneNode handles position, hierarchy, and game logic — while Drawable adds draw(ctx) and zIndex on top. What principle does this separation reflect?",
+          "answers": [
+            {
+              "text": "Separation of concerns — game logic and rendering are independent responsibilities",
+              "correct": true
+            },
+            {
+              "text": "Encapsulation — zIndex must be hidden from the rest of the scene graph",
+              "correct": false
+            },
+            {
+              "text": "Every SceneNode must eventually become a Drawable to participate in the game loop",
+              "correct": false
+            },
+            {
+              "text": "Inheritance is used only to share the update() method between node types",
+              "correct": false
+            }
+          ]
+        },
+        {
+          "type": 5,
+          "mode": 1,
+          "codeId": "69c179edd11c07f5be274895"
+        }
+      ]
+    },
+    {
+      "title": "Sprites",
+      "nodes": [
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Loading Images\n\nEvery sprite-based game needs images loaded before the game loop starts. The browser loads images asynchronously — you hand it a URL and it fires a callback when the file is ready. Doing this manually is awkward:\n\n```js\nconst img = new Image();\nimg.onload = () => {\n  // can finally use img — but we're nested inside a callback\n};\nimg.src = 'assets/characters.png';\n```\n\n`loadImage` from `src/utils.js` wraps this in a `Promise` so you can `await` it:\n\n```js\nconst loadImage = (url) => new Promise((resolve, reject) => {\n    const img = new Image();\n    img.crossOrigin = 'anonymous';  // required for canvas drawImage\n    img.src = url;\n    img.onload  = () => resolve(img);\n    img.onerror = () => reject('Failed to load image: ' + url);\n});\n\n// Usage:\nasync function init() {\n    const img = await loadImage('assets/characters.png');\n    // img is an HTMLImageElement, ready to pass to Spritesheet\n}\n```\n\n### Loading Multiple Images in Parallel\n\n`Promise.all` starts all loads at once and waits for every one to finish — much faster than loading them one after another:\n\n```js\nasync function init() {\n    const [characters, tiles, ui] = await Promise.all([\n        loadImage('assets/characters.png'),\n        loadImage('assets/tiles.png'),\n        loadImage('assets/ui.png'),\n    ]);\n    // All three are ready — start the game loop\n    requestAnimationFrame(loop);\n}\n\ninit();\n```\n\nAlways start `requestAnimationFrame` **inside** the `async` init function, after the `await`. Starting the loop before assets are loaded means the first frames draw nothing."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Spritesheet — Atlas Layout\n\nA **sprite atlas** (or spritesheet) packs many animation frames into a single image. One network request loads everything — far cheaper than a request per frame.\n\n`Spritesheet` describes the layout without storing pixel data:\n\n```js\nconst sheet = new Spritesheet({\n    image:        characterImg,  // HTMLImageElement from loadImage()\n    spriteWidth:  80,            // width  of each frame in pixels\n    spriteHeight: 80,            // height of each frame in pixels\n    columns:      3,             // frames per row\n    count:        6,             // total valid frames\n    margin:       0,             // gap between atlas edge and first frame\n    spacing:      0,             // gap between adjacent frames\n});\n```\n\n### getRegion(frame)\n\nFrames are numbered left-to-right, top-to-bottom starting at 0:\n\n```\n┌──────┬──────┬──────┐\n│  0   │  1   │  2   │  ← row 0\n├──────┼──────┼──────┤\n│  3   │  4   │  5   │  ← row 1\n└──────┴──────┴──────┘\n```\n\n`getRegion(frame)` converts the index to a `SpriteRegion` — a `{ x, y, width, height }` rectangle on the source image:\n\n```js\nsheet.getRegion(0);  // { x:   0, y:  0, width: 80, height: 80 }\nsheet.getRegion(2);  // { x: 160, y:  0, width: 80, height: 80 }\nsheet.getRegion(4);  // { x:  80, y: 80, width: 80, height: 80 }\n```\n\n`margin` and `spacing` adjust the math for atlases exported with padding:\n\n```js\n// Atlas with 2 px edge margin and 1 px gap between frames:\nconst sheet = new Spritesheet({\n    image, spriteWidth: 64, spriteHeight: 64, columns: 4, count: 8,\n    margin: 2, spacing: 1,\n});\n// getRegion(1).x = margin + 1 * (spriteWidth + spacing)\n//              = 2 + 1 * (64 + 1) = 67\n```"
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Sprite — Drawing a Region\n\n`Sprite` extends `Drawable` and renders one `SpriteRegion` from a `Spritesheet` to the canvas. Like all `Drawable` subclasses, it draws at the **local origin** — the `Renderer` applies the world transform before calling `draw()`.\n\n```js\nconst sprite = new Sprite({ sheet, zIndex: 1 });\nscene.addNode(sprite);\n```\n\nInternally, `Sprite.draw` calls `ctx.drawImage` with the source rectangle, centering the frame at `(0, 0)` in local space:\n\n```js\ndraw(ctx) {\n    const r = this.region;\n    ctx.drawImage(\n        this.sheet.image,\n        r.x, r.y, r.width, r.height,       // source rect on atlas\n        -r.width / 2, -r.height / 2,        // centered in local space\n        r.width, r.height                   // destination size (1:1 pixels)\n    );\n}\n```\n\n### Changing the Displayed Frame\n\nAssign a new region to `sprite.region` at any time:\n\n```js\nsprite.region = sheet.getRegion(2);   // jump to frame 2\n```\n\nFor automatic frame advancing at a fixed rate, use `Animator` (next topic). Direct assignment is fine for static sprites or one-off jumps.\n\n### Scaling\n\nThe sprite renders 1:1 with its pixel dimensions in local space. Scale the node to resize it without touching the source image:\n\n```js\nsprite.scale.set(2, 2);   // renders at 2× pixel size on screen\n```\n\nThe `Renderer`'s `setTransform` handles the scaling — `draw()` always issues the same `drawImage` call regardless of the node's scale."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Animation & Animator\n\nA raw `Sprite` with manual `region` assignment works for static images, but advancing frames by hand in `update()` is repetitive. `Animator` handles it automatically.\n\n### Animation — A Named Clip\n\nAn `Animation` is a plain object: a unique `name`, an array of `SpriteRegion` frames, a frame duration in milliseconds, and whether it loops:\n\n```js\nconst walkAnim = {\n    name:          'walk',\n    frames:        [0, 1, 2].map(i => sheet.getRegion(i)),\n    frameDuration: 180,   // ms per frame\n    loop:          true,\n};\n\nconst attackAnim = {\n    name:          'attack',\n    frames:        [3, 4, 5].map(i => sheet.getRegion(i)),\n    frameDuration: 120,\n    loop:          false, // holds the last frame, then stops\n};\n```\n\n### Animator — Driving the Sprite\n\n`Animator` is a `SceneNode` (not a `Drawable`). Add it to the scene alongside the `Sprite` it drives:\n\n```js\nconst sprite   = new Sprite({ sheet, zIndex: 1 });\nconst animator = new Animator(sprite);\nscene.addNode(sprite);\nscene.addNode(animator);\n\nanimator.play(walkAnim);\n```\n\nEach `update(dt)` tick, the animator advances its timer and writes the correct region to the sprite. No manual `update` needed in your own nodes.\n\n### isPlaying(name)\n\n`play()` always restarts from frame 0 — even if the animation is already running. Guard against redundant restarts:\n\n```js\n// Safe to call every frame in a state machine:\nif (!animator.isPlaying('walk')) {\n    animator.play(walkAnim);\n}\n```\n\n### Events — 'start' and 'end'\n\n`Animator` emits `SceneNode` events, so other nodes react without polling:\n\n```js\nanimator.on('start', ({ data }) => {\n    console.log('started:', data.animation.name);\n});\n\nanimator.on('end', ({ data }) => {\n    // 'end' fires only for non-looping animations\n    console.log('finished:', data.animation.name);\n    animator.play(walkAnim);  // return to idle\n});\n\nanimator.play(attackAnim);\n```\n\nThe `data` payload is `{ animation }`, so listeners always know which clip just started or ended."
+        },
+        {
+          "type": 2,
+          "text": "A Spritesheet has spriteWidth: 64, spriteHeight: 64, columns: 4, no margin, no spacing. What is getRegion(5).x?",
+          "answers": [
+            {
+              "text": "64",
+              "correct": true
+            },
+            {
+              "text": "128",
+              "correct": false
+            },
+            {
+              "text": "320",
+              "correct": false
+            },
+            {
+              "text": "0",
+              "correct": false
+            }
+          ]
+        },
+        {
+          "type": 2,
+          "text": "An Animator is playing 'walk'. You want to switch to 'run' without restarting it if it is already playing. Which code is correct?",
+          "answers": [
+            {
+              "text": "if (!animator.isPlaying('run')) animator.play(runAnim);",
+              "correct": true
+            },
+            {
+              "text": "animator.play(runAnim);",
+              "correct": false
+            },
+            {
+              "text": "if (animator.isPlaying('walk')) animator.play(runAnim);",
+              "correct": false
+            },
+            {
+              "text": "animator.once('end', () => animator.play(runAnim));",
+              "correct": false
+            }
+          ]
+        },
+        {
+          "type": 4,
+          "text": "What Animator event fires when a non-looping animation reaches its last frame?",
+          "correctAnswer": "end"
+        },
+        {
+          "type": 5,
+          "mode": 1,
+          "codeId": ""
         }
       ]
     }

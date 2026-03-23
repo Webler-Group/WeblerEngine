@@ -3,6 +3,10 @@
  */
 
 /**
+ * @typedef {{ type: string, data: any, target: SceneNode }} SceneNodeEvent
+ */
+
+/**
  * 1st core class. Owns the active scene and handles transitions between scenes.
  *
  * Scenes are defined by registering an init function — a plain function that
@@ -204,6 +208,18 @@ class Scene {
     }
 
     /**
+     * Returns all nodes that are instances of the given class.
+     * Pass any class that extends SceneNode.
+     *
+     * @template {typeof SceneNode} T
+     * @param {T} type
+     * @returns {InstanceType<T>[]}
+     */
+    findNodesByType(type) {
+        return /** @type {InstanceType<T>[]} */ (this.nodes.filter(n => n instanceof type));
+    }
+
+    /**
      * Called automatically before the start of its life cycle.
      */
     start() {
@@ -289,6 +305,10 @@ class SceneNode {
      * @type {SceneNode | null}
      */
     parent;
+    /**
+     * @type {Map<string, Set<Function>>}
+     */
+    _listeners;
 
     constructor() {
         this.id = SceneNode._nextId++;
@@ -298,6 +318,7 @@ class SceneNode {
         this.angle = 0;
         this.scale = Vector.one();
         this.parent = null;
+        this._listeners = new Map();
     }
 
     /**
@@ -425,6 +446,66 @@ class SceneNode {
     }
 
     // -------------------------------------------------------------------------
+    // Events
+    // -------------------------------------------------------------------------
+
+    /**
+     * Registers a listener for the given event type. The handler is called
+     * with a SceneNodeEvent every time emit() is called with that type.
+     *
+     * @param {string} type
+     * @param {(event: SceneNodeEvent) => void} handler
+     */
+    on(type, handler) {
+        if (!this._listeners.has(type)) {
+            this._listeners.set(type, new Set());
+        }
+        this._listeners.get(type).add(handler);
+    }
+
+    /**
+     * Like on(), but the handler automatically removes itself after the
+     * first time it is called.
+     *
+     * @param {string} type
+     * @param {(event: SceneNodeEvent) => void} handler
+     */
+    once(type, handler) {
+        const wrapper = (event) => {
+            this.off(type, wrapper);
+            handler(event);
+        };
+        this.on(type, wrapper);
+    }
+
+    /**
+     * Removes a previously registered listener. Does nothing if the handler
+     * was not registered for that type.
+     *
+     * @param {string} type
+     * @param {(event: SceneNodeEvent) => void} handler
+     */
+    off(type, handler) {
+        this._listeners.get(type)?.delete(handler);
+    }
+
+    /**
+     * Dispatches an event on this node. All listeners registered for the
+     * given type are called synchronously in registration order.
+     *
+     * @param {string} type
+     * @param {any} [data]
+     */
+    emit(type, data) {
+        const listeners = this._listeners.get(type);
+        if (!listeners) return;
+        const event = { type, data, target: this };
+        for (const handler of [...listeners]) {
+            handler(event);
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Lifecycle
     // -------------------------------------------------------------------------
 
@@ -450,6 +531,6 @@ class SceneNode {
      * All resources allocated outside of the node shall be cleaned up.
      */
     destroy() {
-
+        this._listeners.clear();
     }
 }

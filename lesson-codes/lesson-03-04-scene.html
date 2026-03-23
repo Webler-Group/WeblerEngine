@@ -261,7 +261,91 @@
 
   <div class="demo-area">
     <canvas id="canvas" width="560" height="420"></canvas>
-    <div class="info" id="info"></div>
+
+    <!-- Panel 0: Scene Graph Hierarchy -->
+    <div class="info" id="panel-0">
+      <h3>Scene Graph Hierarchy</h3>
+      <p>The ship faces your mouse. All children rotate with it. The turret also oscillates independently — that is its <b>local</b> angle.</p>
+      <div class="tree">
+        <div class="tree-node"><div class="tree-dot" style="background:#4cc9f0"></div><span class="tree-name">Ship</span><span class="tree-id" id="d0-id-ship"></span></div>
+        <div style="padding-left:8px">
+          <div class="tree-node"><div class="tree-indent"></div><div class="tree-dot" style="background:#a78bfa"></div><span class="tree-name">Turret</span><span class="tree-id" id="d0-id-turret"></span></div>
+          <div style="padding-left:16px">
+            <div class="tree-node"><div class="tree-indent"></div><div class="tree-dot" style="background:#f72585"></div><span class="tree-name">Barrel</span><span class="tree-id" id="d0-id-barrel"></span></div>
+          </div>
+          <div class="tree-node"><div class="tree-indent"></div><div class="tree-dot" style="background:#fb923c"></div><span class="tree-name">EngineL</span><span class="tree-id" id="d0-id-engineL"></span></div>
+          <div class="tree-node"><div class="tree-indent"></div><div class="tree-dot" style="background:#fb923c"></div><span class="tree-name">EngineR</span><span class="tree-id" id="d0-id-engineR"></span></div>
+        </div>
+      </div>
+      <div class="code-block">turret.setParent(ship);
+barrel.setParent(turret);
+engineL.setParent(ship);
+
+// When ship rotates, ALL
+// children follow automatically.</div>
+    </div>
+
+    <!-- Panel 1: Local vs World Space -->
+    <div class="info" id="panel-1" style="display:none">
+      <h3>Local vs World Space</h3>
+      <p><b>Click any node</b> to inspect it. The ship rotates automatically. Local is relative to parent; world is absolute canvas coordinates.</p>
+      <div id="d1-selected-label" style="font-size:0.76rem;margin-bottom:8px">Selected: <b id="d1-selected-name"></b> <span id="d1-selected-id"></span></div>
+      <div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">LOCAL (relative to parent)</div>
+      <div class="val-row"><span class="val-label">position.x</span><span class="val-num" id="d1-local-x">0</span></div>
+      <div class="val-row"><span class="val-label">position.y</span><span class="val-num" id="d1-local-y">0</span></div>
+      <div class="val-row"><span class="val-label">angle</span><span class="val-num" id="d1-local-angle">0</span></div>
+      <div style="font-size:0.72rem;color:var(--muted);margin:8px 0 4px">WORLD (canvas coordinates)</div>
+      <div class="val-row"><span class="val-label">worldPos.x</span><span class="val-num purple" id="d1-world-x">0</span></div>
+      <div class="val-row"><span class="val-label">worldPos.y</span><span class="val-num purple" id="d1-world-y">0</span></div>
+      <div class="val-row"><span class="val-label">worldAngle</span><span class="val-num purple" id="d1-world-angle">0</span></div>
+      <div class="code-block">// Local stays constant:
+node.position  // relative to parent
+
+// World recalculates every call:
+node.getWorldPosition()
+node.getWorldAngle()</div>
+    </div>
+
+    <!-- Panel 2: Reparenting -->
+    <div class="info" id="panel-2" style="display:none">
+      <h3>Reparenting</h3>
+      <p>Cargo orbits <b>ShipA</b>. Use the buttons to reparent it to <b>ShipB</b> with or without keeping its world position.</p>
+      <div class="val-row"><span class="val-label">cargo parent</span><span class="val-num" id="d2-parent-name">ShipA</span></div>
+      <div class="val-row"><span class="val-label">cargo local.x</span><span class="val-num" id="d2-local-x">0</span></div>
+      <div class="val-row"><span class="val-label">cargo local.y</span><span class="val-num" id="d2-local-y">0</span></div>
+      <div class="val-row"><span class="val-label">cargo world.x</span><span class="val-num purple" id="d2-world-x">0</span></div>
+      <div class="val-row"><span class="val-label">cargo world.y</span><span class="val-num purple" id="d2-world-y">0</span></div>
+      <div>
+        <button class="btn" onclick="reparentToB(false)">→ ShipB (snap)</button>
+        <button class="btn" onclick="reparentToB(true)">→ ShipB (keep world)</button>
+        <button class="btn danger" onclick="resetReparent()">Reset</button>
+      </div>
+      <div class="code-block">// Teleports to ShipB's local space:
+cargo.setParent(shipB);
+
+// Stays at same world pos:
+cargo.setParent(shipB, true);</div>
+    </div>
+
+    <!-- Panel 3: Add / Remove Nodes -->
+    <div class="info" id="panel-3" style="display:none">
+      <h3>Add / Remove Nodes</h3>
+      <p>Click the canvas to add bubbles. Each removes itself after a few seconds by calling <code>scene.removeNode(this)</code>.</p>
+      <div class="val-row"><span class="val-label">scene.nodes.length</span><span class="val-num" id="d3-node-count">0</span></div>
+      <div class="val-row"><span class="val-label">pending</span><span class="val-num yellow" id="d3-pending">0</span></div>
+      <div class="val-row"><span class="val-label">pendingRemoval</span><span class="val-num pink" id="d3-pending-removal">0</span></div>
+      <button class="btn" onclick="spawnBubble()">Spawn random</button>
+      <div class="code-block">// Inside BubbleNode.update(dt):
+this._life -= dt;
+if (this._life <= 0) {
+  this.scene.removeNode(this);
+  // Deferred to next tick —
+  // safe mid-iteration.
+}
+
+// From outside (e.g. on click):
+sm.currentScene.addNode(new BubbleNode(...));</div>
+    </div>
   </div>
 
   <script>
@@ -546,6 +630,13 @@
     const h0 = buildHierarchy0();
     let turretLocalAngle0 = 0;
 
+    // Set tree IDs once at init time
+    document.getElementById('d0-id-ship').textContent = '#' + h0.ship.id;
+    document.getElementById('d0-id-turret').textContent = '#' + h0.turret.id;
+    document.getElementById('d0-id-barrel').textContent = '#' + h0.barrel.id;
+    document.getElementById('d0-id-engineL').textContent = '#' + h0.engineL.id;
+    document.getElementById('d0-id-engineR').textContent = '#' + h0.engineR.id;
+
     function renderNode0(node, color, size = 10) {
       const wp = node.getWorldPosition();
       const wa = node.getWorldAngle();
@@ -577,30 +668,6 @@
       renderNode0(h0.ship, '#4cc9f0', 14);
       renderNode0(h0.turret, '#a78bfa', 11);
       renderNode0(h0.barrel, '#f72585', 8);
-
-      const nodes = [h0.ship, h0.turret, h0.barrel, h0.engineL, h0.engineR];
-      const colors = ['#4cc9f0', '#a78bfa', '#f72585', '#fb923c', '#fb923c'];
-
-      document.getElementById('info').innerHTML = `
-        <h3>Scene Graph Hierarchy</h3>
-        <p>The ship faces your mouse. All children rotate with it. The turret also oscillates independently — that is its <b>local</b> angle.</p>
-        <div class="tree">
-          <div class="tree-node"><div class="tree-dot" style="background:#4cc9f0"></div><span class="tree-name">Ship</span><span class="tree-id">#${h0.ship.id}</span></div>
-          <div style="padding-left:8px">
-            <div class="tree-node"><div class="tree-indent"></div><div class="tree-dot" style="background:#a78bfa"></div><span class="tree-name">Turret</span><span class="tree-id">#${h0.turret.id}</span></div>
-            <div style="padding-left:16px">
-              <div class="tree-node"><div class="tree-indent"></div><div class="tree-dot" style="background:#f72585"></div><span class="tree-name">Barrel</span><span class="tree-id">#${h0.barrel.id}</span></div>
-            </div>
-            <div class="tree-node"><div class="tree-indent"></div><div class="tree-dot" style="background:#fb923c"></div><span class="tree-name">EngineL</span><span class="tree-id">#${h0.engineL.id}</span></div>
-            <div class="tree-node"><div class="tree-indent"></div><div class="tree-dot" style="background:#fb923c"></div><span class="tree-name">EngineR</span><span class="tree-id">#${h0.engineR.id}</span></div>
-          </div>
-        </div>
-        <div class="code-block">turret.setParent(ship);
-barrel.setParent(turret);
-engineL.setParent(ship);
-
-// When ship rotates, ALL
-// children follow automatically.</div>`;
     }
 
     // ==========================================================================
@@ -668,26 +735,17 @@ engineL.setParent(ship);
       const s = selectedNode1;
       const wp = s.getWorldPosition();
       const wa = s.getWorldAngle();
-      const ws = s.getWorldScale();
 
-      document.getElementById('info').innerHTML = `
-        <h3>Local vs World Space</h3>
-        <p><b>Click any node</b> to inspect it. The ship rotates automatically. Local is relative to parent; world is absolute canvas coordinates.</p>
-        <div style="font-size:0.76rem;color:${h1colors[s.name]};margin-bottom:8px">Selected: <b>${s.name}</b> #${s.id}</div>
-        <div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">LOCAL (relative to parent)</div>
-        <div class="val-row"><span class="val-label">position.x</span><span class="val-num">${n2(s.position.x)}</span></div>
-        <div class="val-row"><span class="val-label">position.y</span><span class="val-num">${n2(s.position.y)}</span></div>
-        <div class="val-row"><span class="val-label">angle</span><span class="val-num">${n2(s.angle)} rad</span></div>
-        <div style="font-size:0.72rem;color:var(--muted);margin:8px 0 4px">WORLD (canvas coordinates)</div>
-        <div class="val-row"><span class="val-label">worldPos.x</span><span class="val-num purple">${n2(wp.x)}</span></div>
-        <div class="val-row"><span class="val-label">worldPos.y</span><span class="val-num purple">${n2(wp.y)}</span></div>
-        <div class="val-row"><span class="val-label">worldAngle</span><span class="val-num purple">${n2(wa)} rad</span></div>
-        <div class="code-block">// Local stays constant:
-node.position  // relative to parent
-
-// World recalculates every call:
-node.getWorldPosition()
-node.getWorldAngle()</div>`;
+      const d1Label = document.getElementById('d1-selected-label');
+      d1Label.style.color = h1colors[s.name];
+      document.getElementById('d1-selected-name').textContent = s.name;
+      document.getElementById('d1-selected-id').textContent = '#' + s.id;
+      document.getElementById('d1-local-x').textContent = n2(s.position.x);
+      document.getElementById('d1-local-y').textContent = n2(s.position.y);
+      document.getElementById('d1-local-angle').textContent = n2(s.angle) + ' rad';
+      document.getElementById('d1-world-x').textContent = n2(wp.x);
+      document.getElementById('d1-world-y').textContent = n2(wp.y);
+      document.getElementById('d1-world-angle').textContent = n2(wa) + ' rad';
     }
 
     // ==========================================================================
@@ -708,12 +766,8 @@ node.getWorldAngle()</div>`;
 
     let r2 = buildReparentScene();
     let r2t = 0;
-    let r2keepWorld = false;
-
-    document.addEventListener('click', () => { }); // placeholder
 
     function reparentToB(keepWorld) {
-      r2keepWorld = keepWorld;
       r2.cargo.setParent(r2.shipB, keepWorld);
     }
 
@@ -745,28 +799,17 @@ node.getWorldAngle()</div>`;
       drawNode(posC, nCargo.getWorldAngle(), nCargo.getWorldScale(), '#fbbf24', 'Cargo', 11);
       drawAxes(posC, nCargo.getWorldAngle(), 16, 0.6);
 
-      // Label parent
       const parentName = nCargo.parent ? nCargo.parent.name : 'none';
       const parentColor = parentName === 'ShipA' ? '#4cc9f0' : parentName === 'ShipB' ? '#4ade80' : '#888';
 
-      document.getElementById('info').innerHTML = `
-        <h3>Reparenting</h3>
-        <p>Cargo orbits <b>ShipA</b>. Use the buttons to reparent it to <b>ShipB</b> with or without keeping its world position.</p>
-        <div class="val-row"><span class="val-label">cargo parent</span><span class="val-num" style="color:${parentColor}">${parentName}</span></div>
-        <div class="val-row"><span class="val-label">cargo local.x</span><span class="val-num">${n2(nCargo.position.x)}</span></div>
-        <div class="val-row"><span class="val-label">cargo local.y</span><span class="val-num">${n2(nCargo.position.y)}</span></div>
-        <div class="val-row"><span class="val-label">cargo world.x</span><span class="val-num purple">${n2(posC.x)}</span></div>
-        <div class="val-row"><span class="val-label">cargo world.y</span><span class="val-num purple">${n2(posC.y)}</span></div>
-        <div>
-          <button class="btn" onclick="reparentToB(false)">→ ShipB (snap)</button>
-          <button class="btn" onclick="reparentToB(true)">→ ShipB (keep world)</button>
-          <button class="btn danger" onclick="resetReparent()">Reset</button>
-        </div>
-        <div class="code-block">// Teleports to ShipB's local space:
-cargo.setParent(shipB);
+      const d2ParentName = document.getElementById('d2-parent-name');
+      d2ParentName.textContent = parentName;
+      d2ParentName.style.color = parentColor;
 
-// Stays at same world pos:
-cargo.setParent(shipB, true);</div>`;
+      document.getElementById('d2-local-x').textContent = n2(nCargo.position.x);
+      document.getElementById('d2-local-y').textContent = n2(nCargo.position.y);
+      document.getElementById('d2-world-x').textContent = n2(posC.x);
+      document.getElementById('d2-world-y').textContent = n2(posC.y);
     }
 
     // ==========================================================================
@@ -854,24 +897,9 @@ cargo.setParent(shipB, true);</div>`;
       ctx.restore();
 
       const s3 = sm3.currentScene;
-
-      document.getElementById('info').innerHTML = `
-        <h3>Add / Remove Nodes</h3>
-        <p>Click the canvas to add bubbles. Each removes itself after a few seconds by calling <code>scene.removeNode(this)</code>.</p>
-        <div class="val-row"><span class="val-label">scene.nodes.length</span><span class="val-num">${s3.nodes.length}</span></div>
-        <div class="val-row"><span class="val-label">pending</span><span class="val-num yellow">${s3.pending.length}</span></div>
-        <div class="val-row"><span class="val-label">pendingRemoval</span><span class="val-num pink">${s3.pendingRemoval.length}</span></div>
-        <button class="btn" onclick="spawnBubble()">Spawn random</button>
-        <div class="code-block">// Inside BubbleNode.update(dt):
-this._life -= dt;
-if (this._life <= 0) {
-  this.scene.removeNode(this);
-  // Deferred to next tick —
-  // safe mid-iteration.
-}
-
-// From outside (e.g. on click):
-sm.currentScene.addNode(new BubbleNode(...));</div>`;
+      document.getElementById('d3-node-count').textContent = s3.nodes.length;
+      document.getElementById('d3-pending').textContent = s3.pending.length;
+      document.getElementById('d3-pending-removal').textContent = s3.pendingRemoval.length;
     }
 
     // ==========================================================================
@@ -883,6 +911,7 @@ sm.currentScene.addNode(new BubbleNode(...));</div>`;
     function setDemo(i) {
       currentDemo = i;
       document.querySelectorAll('.tab').forEach((t, idx) => t.classList.toggle('active', idx === i));
+      document.querySelectorAll('.info').forEach((p, idx) => p.style.display = idx === i ? '' : 'none');
     }
 
     let lastTime = 0;
@@ -898,5 +927,4 @@ sm.currentScene.addNode(new BubbleNode(...));</div>`;
   </script>
 
 </body>
-
 </html>
