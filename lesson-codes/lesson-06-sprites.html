@@ -59,7 +59,7 @@
     <div class="info" id="panel-0">
       <h3>Spritesheet &amp; Sprite</h3>
       <p><code>Spritesheet</code> maps a frame index to a source rect on the atlas. <code>Sprite</code> renders that rect via <code>drawImage</code>, centered at (0,&nbsp;0) in local space.</p>
-      <div class="val-row"><span class="val-label">frame</span><span class="val-num yellow" id="d0-frame">0</span></div>
+      <div class="val-row"><span class="val-label">frame</span><span class="val-num yellow" id="d0-frame">—</span></div>
       <div class="val-row"><span class="val-label">region x</span><span class="val-num" id="d0-rx">—</span></div>
       <div class="val-row"><span class="val-label">region y</span><span class="val-num" id="d0-ry">—</span></div>
       <div class="val-row"><span class="val-label">region w</span><span class="val-num" id="d0-rw">—</span></div>
@@ -68,39 +68,44 @@
         <button class="btn" onclick="stepFrame(-1)">&#9664; Prev</button>
         <button class="btn" onclick="stepFrame(1)">Next &#9654;</button>
       </div>
-      <div class="code-block">const sheet = new Spritesheet({
-  image,
-  spriteWidth:  80,
-  spriteHeight: 80,
-  columns: 3,
-  count:   6,
+      <div class="code-block">const img = await loadImage(
+  ASSETS_BASE_URL + 'assets/teleport.png'
+);
+const sheet = new Spritesheet({
+  image, spriteWidth: 256,
+  spriteHeight: 256,
+  columns: 4, count: 24,
 });
-
-const sprite = new Sprite({ sheet });
-sprite.region = sheet.getRegion(2);</div>
+sprite.region = sheet.getRegion(3);</div>
     </div>
 
     <!-- Panel 1 -->
     <div class="info" id="panel-1" style="display:none">
       <h3>Animation &amp; Animator</h3>
       <p><code>Animator</code> advances a <code>Sprite</code>'s region each tick. <code>isPlaying(name)</code> prevents redundant restarts. Non-looping animations emit <code>'end'</code>.</p>
-      <div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">WALKER <span style="color:#4cc9f0">■</span></div>
-      <div class="val-row"><span class="val-label">isPlaying('walk')</span><span class="val-num accent" id="d1-walker-state">—</span></div>
-      <div style="font-size:0.72rem;color:var(--muted);margin:6px 0 4px">ATTACKER <span style="color:#f72585">■</span></div>
-      <div class="val-row"><span class="val-label">isPlaying('walk')</span><span class="val-num" id="d1-atk-walk">—</span></div>
-      <div class="val-row"><span class="val-label">isPlaying('attack')</span><span class="val-num pink" id="d1-atk-attack">—</span></div>
+      <div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">CHARACTER A <span style="color:#4cc9f0">■</span></div>
+      <div class="val-row"><span class="val-label">isPlaying('idle')</span><span class="val-num accent" id="d1-a-idle">—</span></div>
+      <div style="font-size:0.72rem;color:var(--muted);margin:6px 0 4px">CHARACTER B <span style="color:#4ade80">■</span></div>
+      <div class="val-row"><span class="val-label">isPlaying('idle')</span><span class="val-num" id="d1-b-idle">—</span></div>
+      <div class="val-row"><span class="val-label">isPlaying('teleport')</span><span class="val-num pink" id="d1-b-teleport">—</span></div>
       <div style="margin:8px 0 4px;font-size:0.72rem;color:var(--muted)">EVENT LOG</div>
       <div id="d1-log" style="font-size:0.72rem;line-height:2;min-height:64px"></div>
-      <button class="btn" onclick="triggerAttack()">Play attack</button>
-      <div class="code-block">animator.on('end', (e) => {
-  animator.play(walkAnim);
+      <button class="btn" onclick="triggerTeleport()">Activate B</button>
+      <div class="code-block">animB.on('end', (e) => {
+  animB.play(idleAnim);
 });
 
-animator.play(attackAnim);</div>
+animB.play(teleportAnim);</div>
     </div>
   </div>
 
   <script>
+    // =========================================================================
+    // Base URL for asset loading. Empty for localhost; set to your CDN/domain
+    // root when deploying (e.g. 'https://example.com/').
+    // =========================================================================
+    const ASSETS_BASE_URL = '../';
+
     // =========================================================================
     // Vector (from src/utils.js)
     // =========================================================================
@@ -161,10 +166,10 @@ animator.play(attackAnim);</div>
         const p = this.parent.getWorldPosition(), pa = this.parent.getWorldAngle(), ps = this.parent.getWorldScale();
         this.position.copy(w.sub(p).rotate(-pa).div(ps));
       }
-      getWorldAngle() { return this.parent ? this.parent.getWorldAngle() + this.angle : this.angle; }
-      setWorldAngle(wa) { this.angle = this.parent ? wa - this.parent.getWorldAngle() : wa; }
-      getWorldScale() { return this.parent ? this.parent.getWorldScale().mul(this.scale) : this.scale.clone(); }
-      setWorldScale(ws) { this.scale.copy(this.parent ? ws.clone().div(this.parent.getWorldScale()) : ws.clone()); }
+      getWorldAngle()  { return this.parent ? this.parent.getWorldAngle() + this.angle : this.angle; }
+      setWorldAngle(wa){ this.angle = this.parent ? wa - this.parent.getWorldAngle() : wa; }
+      getWorldScale()  { return this.parent ? this.parent.getWorldScale().mul(this.scale) : this.scale.clone(); }
+      setWorldScale(ws){ this.scale.copy(this.parent ? ws.clone().div(this.parent.getWorldScale()) : ws.clone()); }
       on(type, handler) {
         if (!this._listeners.has(type)) this._listeners.set(type, new Set());
         this._listeners.get(type).add(handler);
@@ -177,9 +182,9 @@ animator.play(attackAnim);</div>
         const ev = { type, data, target: this };
         for (const h of [...ls]) h(ev);
       }
-      start()   {}
-      update(dt){}
-      destroy() { this._listeners.clear(); }
+      start()    {}
+      update(dt) {}
+      destroy()  { this._listeners.clear(); }
     }
 
     // =========================================================================
@@ -341,8 +346,7 @@ animator.play(attackAnim);</div>
     }
 
     // =========================================================================
-    // loadImage (from src/utils.js) — included for reference; demo uses a
-    // canvas-generated atlas so no network request is needed here.
+    // loadImage (from src/utils.js)
     // =========================================================================
     const loadImage = (url) => new Promise((resolve, reject) => {
       const img = new Image();
@@ -353,82 +357,17 @@ animator.play(attackAnim);</div>
     });
 
     // =========================================================================
-    // Atlas generation — programmatic spritesheet (HTMLCanvasElement as image)
-    //
-    // Row 0 (frames 0-2): walk cycle   — blue stick figure, legs alternating
-    // Row 1 (frames 3-5): attack cycle — pink stick figure, arm swinging
+    // Spritesheet constants
+    //   teleport.png: 256×256 px per frame, 4 columns, 6 rows, 24 frames total
+    //   frame 0:    idle
+    //   frames 1-23: teleport activation
     // =========================================================================
-    const FW = 80, FH = 80, ATLAS_COLS = 3;
+    const FW = 256, FH = 256, ATLAS_COLS = 4, ATLAS_ROWS = 6, FRAME_COUNT = 24;
 
-    function drawStick(g, cx, cy, legR, legL, armR, armL, color) {
-      g.strokeStyle = color;
-      g.lineWidth   = 3;
-      g.lineCap     = 'round';
-      const HL = 18, HA = 16;
-      // Head
-      g.beginPath(); g.arc(cx, cy - 22, 9, 0, Math.PI * 2); g.stroke();
-      // Body
-      g.beginPath(); g.moveTo(cx, cy - 13); g.lineTo(cx, cy + 6); g.stroke();
-      // Arms (from shoulder at cy-8)
-      g.beginPath(); g.moveTo(cx, cy - 8);
-      g.lineTo(cx + Math.sin(armR) * HA, cy - 8 - Math.cos(armR) * HA); g.stroke();
-      g.beginPath(); g.moveTo(cx, cy - 8);
-      g.lineTo(cx - Math.sin(armL) * HA, cy - 8 - Math.cos(armL) * HA); g.stroke();
-      // Legs (from hip at cy+6)
-      g.beginPath(); g.moveTo(cx, cy + 6);
-      g.lineTo(cx + Math.sin(legR) * HL, cy + 6 + Math.cos(legR) * HL); g.stroke();
-      g.beginPath(); g.moveTo(cx, cy + 6);
-      g.lineTo(cx - Math.sin(legL) * HL, cy + 6 + Math.cos(legL) * HL); g.stroke();
-    }
-
-    function buildAtlas() {
-      const ac = document.createElement('canvas');
-      ac.width = FW * ATLAS_COLS; ac.height = FH * 2;
-      const ag = ac.getContext('2d');
-      ag.fillStyle = '#0a0a18';
-      ag.fillRect(0, 0, ac.width, ac.height);
-
-      // Walk frames — [legR, legL, armR, armL]
-      const walkPoses = [
-        [ 0.5, -0.5,  0.35, -0.35],
-        [ 0.0,  0.0,  0.0,   0.0 ],
-        [-0.5,  0.5, -0.35,  0.35],
-      ];
-      walkPoses.forEach(([lr, ll, ar, al], i) => {
-        drawStick(ag, i * FW + FW / 2, FH / 2 + 8, lr, ll, ar, al, '#4cc9f0');
-      });
-
-      // Attack frames
-      const attackPoses = [
-        [ 0.2, -0.2,  0.25,  0.25],
-        [ 0.2, -0.2,  1.35,  0.25],
-        [ 0.2, -0.2, -0.5,   0.25],
-      ];
-      attackPoses.forEach(([lr, ll, ar, al], i) => {
-        drawStick(ag, i * FW + FW / 2, FH + FH / 2 + 8, lr, ll, ar, al, '#f72585');
-      });
-
-      return ac;
-    }
-
-    const atlasCanvas = buildAtlas();
-    const sheet = new Spritesheet({
-      image: atlasCanvas, spriteWidth: FW, spriteHeight: FH,
-      columns: ATLAS_COLS, count: 6,
-    });
-
-    const walkAnim = {
-      name: 'walk',
-      frames: [0, 1, 2].map(i => sheet.getRegion(i)),
-      frameDuration: 180,
-      loop: true,
-    };
-    const attackAnim = {
-      name: 'attack',
-      frames: [3, 4, 5].map(i => sheet.getRegion(i)),
-      frameDuration: 120,
-      loop: false,
-    };
+    // Shared state — populated by init() after the image loads
+    let sheet       = null;
+    let idleAnim     = null;
+    let teleportAnim = null;
 
     // =========================================================================
     // Canvas / renderer setup
@@ -441,39 +380,33 @@ animator.play(attackAnim);</div>
 
     // =========================================================================
     // DEMO 0 — Spritesheet & Sprite
-    // Left: atlas HUD with highlighted current frame
-    // Right: Sprite node rendered at 3× scale via Renderer
+    // Left: atlas thumbnail with highlighted current frame
+    // Right: Sprite node rendered at 1:1 scale via Renderer
     // =========================================================================
     const sm0   = new SceneManager();
     let frame0  = 0;
-    let sprite0;
-
-    sm0.register('sprites', (scene) => {
-      sprite0 = new Sprite({ sheet, zIndex: 0 });
-      sprite0.name = 'preview';
-      sprite0.position.set(430, H / 2);
-      sprite0.scale.set(3, 3);
-      scene.addNode(sprite0);
-    });
-    sm0.switchScene('sprites');
+    let sprite0 = null;
 
     function stepFrame(delta) {
-      frame0 = ((frame0 + delta) % 6 + 6) % 6;
+      if (!sheet) return;
+      frame0 = ((frame0 + delta) % FRAME_COUNT + FRAME_COUNT) % FRAME_COUNT;
       sprite0.region = sheet.getRegion(frame0);
     }
 
     function drawAtlasHud() {
-      const S  = 1.0;  // draw at native scale
-      const ox = 14, oy = (H - FH * 2 * S) / 2;
-      const cw = FW * S, ch = FH * S;
-      const aw = FW * ATLAS_COLS * S, ah = FH * 2 * S;
+      // Scale the full atlas image (FW*COLS × FH*ROWS) to fit in ~160px wide
+      const DW   = 160;
+      const S    = DW / (FW * ATLAS_COLS);    // ≈ 0.156 for 256×4=1024 → 160
+      const cellW = FW * S, cellH = FH * S;
+      const atlasW = DW, atlasH = FH * ATLAS_ROWS * S;
+      const ox = 12, oy = Math.round((H - atlasH) / 2);
 
-      // Background panel
+      // Background
       ctx.fillStyle = '#0a0a1a';
-      ctx.fillRect(ox - 3, oy - 18, aw + 6, ah + 22);
+      ctx.fillRect(ox - 3, oy - 18, atlasW + 6, atlasH + 22);
       ctx.strokeStyle = '#2a2a45';
       ctx.lineWidth = 1;
-      ctx.strokeRect(ox - 3, oy - 18, aw + 6, ah + 22);
+      ctx.strokeRect(ox - 3, oy - 18, atlasW + 6, atlasH + 22);
 
       // Label
       ctx.font = '9px Consolas, monospace';
@@ -481,46 +414,39 @@ animator.play(attackAnim);</div>
       ctx.textAlign = 'left';
       ctx.fillText('SOURCE ATLAS', ox, oy - 6);
 
-      // Atlas image
-      ctx.drawImage(atlasCanvas, ox, oy, aw, ah);
+      // Atlas thumbnail
+      ctx.drawImage(sheet.image, ox, oy, atlasW, atlasH);
 
       // Grid lines
-      ctx.strokeStyle = '#2a2a4590';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#ffffff18';
+      ctx.lineWidth = 0.5;
       for (let c = 0; c <= ATLAS_COLS; c++) {
-        ctx.beginPath(); ctx.moveTo(ox + c * cw, oy); ctx.lineTo(ox + c * cw, oy + ah); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ox + c * cellW, oy); ctx.lineTo(ox + c * cellW, oy + atlasH); ctx.stroke();
       }
-      for (let r = 0; r <= 2; r++) {
-        ctx.beginPath(); ctx.moveTo(ox, oy + r * ch); ctx.lineTo(ox + aw, oy + r * ch); ctx.stroke();
+      for (let r = 0; r <= ATLAS_ROWS; r++) {
+        ctx.beginPath(); ctx.moveTo(ox, oy + r * cellH); ctx.lineTo(ox + atlasW, oy + r * cellH); ctx.stroke();
       }
 
       // Frame index labels
-      ctx.font = '9px Consolas, monospace';
+      ctx.font = '7px Consolas, monospace';
       ctx.textAlign = 'left';
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < FRAME_COUNT; i++) {
         const col = i % ATLAS_COLS, row = Math.floor(i / ATLAS_COLS);
-        ctx.fillStyle = row === 0 ? '#4cc9f060' : '#f7258560';
-        ctx.fillText(i, ox + col * cw + 4, oy + row * ch + 12);
+        ctx.fillStyle = i === 0 ? '#4cc9f070' : '#f7258570';
+        ctx.fillText(i, ox + col * cellW + 2, oy + row * cellH + 9);
       }
 
-      // Highlight box around current frame
+      // Highlight box around the current frame
       const hcol = frame0 % ATLAS_COLS, hrow = Math.floor(frame0 / ATLAS_COLS);
       ctx.strokeStyle = '#fbbf24';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(ox + hcol * cw + 1, oy + hrow * ch + 1, cw - 2, ch - 2);
-
-      // Row labels
-      ctx.font = '9px Consolas, monospace';
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#4cc9f060';
-      ctx.fillText('walk', ox + aw + 5, oy + ch / 2 + 3);
-      ctx.fillStyle = '#f7258560';
-      ctx.fillText('attack', ox + aw + 5, oy + ch * 1.5 + 3);
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(ox + hcol * cellW + 1, oy + hrow * cellH + 1, cellW - 2, cellH - 2);
 
       // Preview label
       ctx.fillStyle = '#6b7280';
+      ctx.font = '9px Consolas, monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('PREVIEW (3×)', 430, oy - 6);
+      ctx.fillText('PREVIEW (1×)', 390, oy - 6);
       ctx.textAlign = 'left';
     }
 
@@ -539,21 +465,21 @@ animator.play(attackAnim);</div>
 
     // =========================================================================
     // DEMO 1 — Animation & Animator
-    // Walker: loops walk animation.
-    // Attacker: walks by default; press button to trigger non-looping attack,
-    //           which auto-returns to walk via the 'end' event.
+    // Character A: loops idle animation permanently.
+    // Character B: idles by default; "Activate B" triggers the teleport
+    //              animation (non-looping). On 'end' it auto-returns to idle.
     // =========================================================================
     const sm1 = new SceneManager();
-    let anim1Walker, anim1Attacker;
+    let anim1A = null, anim1B = null;
     const eventLog = [];
 
     function addLog(type, animName, who) {
-      const isStart = type === 'start';
-      const sym   = isStart ? '&#9654;' : '&#9632;';
-      const color = isStart ? '#4ade80' : '#f72585';
-      const nameColor = animName === 'walk' ? '#4cc9f0' : '#f72585';
+      const isStart   = type === 'start';
+      const sym       = isStart ? '&#9654;' : '&#9632;';
+      const typeColor = isStart ? '#4ade80' : '#f72585';
+      const nameColor = animName === 'teleport' ? '#f72585' : '#4cc9f0';
       eventLog.push(
-        `<span style="color:${color}">${sym}</span> ` +
+        `<span style="color:${typeColor}">${sym}</span> ` +
         `<span style="color:#6b7280">${who}</span> ` +
         `'${type}' <span style="color:${nameColor}">${animName}</span>`
       );
@@ -561,42 +487,10 @@ animator.play(attackAnim);</div>
       document.getElementById('d1-log').innerHTML = eventLog.map(l => `<div>${l}</div>`).join('');
     }
 
-    sm1.register('animDemo', (scene) => {
-      // Walker
-      const walkerSprite = new Sprite({ sheet, zIndex: 0 });
-      walkerSprite.name = 'walkerSprite';
-      walkerSprite.position.set(140, H / 2);
-      walkerSprite.scale.set(2.5, 2.5);
-      scene.addNode(walkerSprite);
-
-      anim1Walker = new Animator(walkerSprite);
-      anim1Walker.name = 'walkerAnim';
-      anim1Walker.on('start', (e) => addLog('start', e.data.animation.name, 'walker'));
-      scene.addNode(anim1Walker);
-      anim1Walker.play(walkAnim);
-
-      // Attacker
-      const atkSprite = new Sprite({ sheet, zIndex: 0 });
-      atkSprite.name = 'atkSprite';
-      atkSprite.position.set(420, H / 2);
-      atkSprite.scale.set(2.5, 2.5);
-      scene.addNode(atkSprite);
-
-      anim1Attacker = new Animator(atkSprite);
-      anim1Attacker.name = 'atkAnim';
-      anim1Attacker.on('start', (e) => addLog('start', e.data.animation.name, 'attacker'));
-      anim1Attacker.on('end',   (e) => {
-        addLog('end', e.data.animation.name, 'attacker');
-        anim1Attacker.play(walkAnim);
-      });
-      scene.addNode(anim1Attacker);
-      anim1Attacker.play(walkAnim);
-    });
-    sm1.switchScene('animDemo');
-
-    function triggerAttack() {
-      if (!anim1Attacker.isPlaying('attack')) {
-        anim1Attacker.play(attackAnim);
+    function triggerTeleport() {
+      if (!anim1B) return;
+      if (!anim1B.isPlaying('teleport')) {
+        anim1B.play(teleportAnim);
       }
     }
 
@@ -604,25 +498,27 @@ animator.play(attackAnim);</div>
       sm1.update(dt);
       renderer.render(sm1.currentScene.findNodesByType(Drawable));
 
-      // Labels
+      // Labels drawn on top of sprites
       ctx.font = '11px Consolas, monospace';
       ctx.textAlign = 'center';
       ctx.fillStyle = '#4cc9f0';
-      ctx.fillText('walker', 140, H / 2 + 65);
-      ctx.fillStyle = '#f72585';
-      ctx.fillText('attacker', 420, H / 2 + 65);
+      ctx.fillText('character A', 140, H / 2 + 148);
+      ctx.fillStyle = '#4ade80';
+      ctx.fillText('character B', 420, H / 2 + 148);
       ctx.textAlign = 'left';
 
-      document.getElementById('d1-walker-state').textContent = anim1Walker.isPlaying('walk')    ? 'true' : 'false';
-      document.getElementById('d1-atk-walk').textContent     = anim1Attacker.isPlaying('walk')   ? 'true' : 'false';
-      document.getElementById('d1-atk-attack').textContent   = anim1Attacker.isPlaying('attack') ? 'true' : 'false';
+      document.getElementById('d1-a-idle').textContent      = anim1A?.isPlaying('idle')     ? 'true' : 'false';
+      document.getElementById('d1-b-idle').textContent      = anim1B?.isPlaying('idle')      ? 'true' : 'false';
+      document.getElementById('d1-b-teleport').textContent  = anim1B?.isPlaying('teleport')  ? 'true' : 'false';
     }
 
     // =========================================================================
-    // Main loop
+    // Main loop — runs immediately; shows "Loading…" until init() finishes
     // =========================================================================
     const demos = [updateDemo0, updateDemo1];
     let currentDemo = 0;
+    let lastTime = 0;
+    let loaded   = false;
 
     function setDemo(i) {
       currentDemo = i;
@@ -630,14 +526,96 @@ animator.play(attackAnim);</div>
       document.querySelectorAll('.info').forEach((p, idx) => p.style.display = idx === i ? '' : 'none');
     }
 
-    let lastTime = 0;
     function loop(timestamp) {
       const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
       lastTime = timestamp;
-      demos[currentDemo](dt);
+
+      if (!loaded) {
+        ctx.fillStyle = '#08080f';
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '12px Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('Loading assets...', W / 2, H / 2);
+        ctx.textAlign = 'left';
+      } else {
+        demos[currentDemo](dt);
+      }
+
       requestAnimationFrame(loop);
     }
+
+    // =========================================================================
+    // Init — load assets, build spritesheet, wire up scenes, start loop
+    // =========================================================================
+    async function init() {
+      const img = await loadImage(ASSETS_BASE_URL + 'assets/teleport.png');
+
+      sheet = new Spritesheet({
+        image: img, spriteWidth: FW, spriteHeight: FH,
+        columns: ATLAS_COLS, count: FRAME_COUNT,
+      });
+
+      idleAnim = {
+        name:          'idle',
+        frames:        [sheet.getRegion(0)],
+        frameDuration: 500,
+        loop:          true,
+      };
+
+      teleportAnim = {
+        name:          'teleport',
+        frames:        Array.from({ length: 23 }, (_, i) => sheet.getRegion(i + 1)),
+        frameDuration: 80,
+        loop:          false,
+      };
+
+      // Demo 0 — single sprite preview, centered in the right half
+      sm0.register('sprites', (scene) => {
+        sprite0 = new Sprite({ sheet, zIndex: 0 });
+        sprite0.name = 'preview';
+        sprite0.position.set(390, H / 2);
+        scene.addNode(sprite0);
+      });
+      sm0.switchScene('sprites');
+
+      // Demo 1 — two characters side by side at 0.75× scale
+      sm1.register('animDemo', (scene) => {
+        const spriteA = new Sprite({ sheet, zIndex: 0 });
+        spriteA.name = 'spriteA';
+        spriteA.position.set(140, H / 2);
+        spriteA.scale.set(0.75, 0.75);
+        scene.addNode(spriteA);
+
+        anim1A = new Animator(spriteA);
+        anim1A.name = 'animA';
+        anim1A.on('start', (e) => addLog('start', e.data.animation.name, 'A'));
+        scene.addNode(anim1A);
+        anim1A.play(idleAnim);
+
+        const spriteB = new Sprite({ sheet, zIndex: 0 });
+        spriteB.name = 'spriteB';
+        spriteB.position.set(420, H / 2);
+        spriteB.scale.set(0.75, 0.75);
+        scene.addNode(spriteB);
+
+        anim1B = new Animator(spriteB);
+        anim1B.name = 'animB';
+        anim1B.on('start', (e) => addLog('start', e.data.animation.name, 'B'));
+        anim1B.on('end',   (e) => {
+          addLog('end', e.data.animation.name, 'B');
+          anim1B.play(idleAnim);
+        });
+        scene.addNode(anim1B);
+        anim1B.play(idleAnim);
+      });
+      sm1.switchScene('animDemo');
+
+      loaded = true;
+    }
+
     requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+    init();
   </script>
 
 </body>
