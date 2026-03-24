@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 7 — Camera | Build a 2D Engine</title>
+  <style>
+    :root {
+      --bg: #0f0f1e; --panel: #181828; --border: #2a2a45;
+      --accent: #4cc9f0; --green: #4ade80; --pink: #f72585;
+      --yellow: #fbbf24; --purple: #a78bfa; --orange: #fb923c;
+      --text: #cdd6f4; --muted: #6b7280;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Consolas', 'Courier New', monospace; padding: 24px; }
+    header { margin-bottom: 20px; }
+    header h1 { color: var(--accent); font-size: 1.3rem; margin-bottom: 4px; }
+    header p  { color: var(--muted); font-size: 0.82rem; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+    .tab { padding: 7px 14px; background: var(--panel); border: 1px solid var(--border); color: var(--muted); cursor: pointer; border-radius: 5px; font-family: inherit; font-size: 0.8rem; transition: border-color 0.15s, color 0.15s; }
+    .tab:hover  { color: var(--text); border-color: var(--accent); }
+    .tab.active { color: var(--accent); border-color: var(--accent); background: #141428; }
+    .demo-area { display: flex; gap: 14px; align-items: flex-start; }
+    .canvas-col { display: flex; flex-direction: column; flex-shrink: 0; }
+    canvas { border: 1px solid var(--border); border-radius: 6px; background: #08080f; display: block; width: 100%; max-width: 560px; height: auto; }
+    .info { width: 260px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 16px; min-height: 420px; }
+    .info h3 { color: var(--accent); font-size: 0.85rem; margin-bottom: 10px; }
+    .info p   { color: var(--muted); font-size: 0.78rem; line-height: 1.65; margin-bottom: 10px; }
+    .val-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 0.76rem; }
+    .val-row:last-of-type { border-bottom: none; }
+    .val-label { color: var(--muted); }
+    .val-num          { color: var(--green);  font-weight: bold; }
+    .val-num.yellow   { color: var(--yellow); }
+    .val-num.accent   { color: var(--accent); }
+    .val-num.pink     { color: var(--pink);   }
+    .val-num.orange   { color: var(--orange); }
+    .code-block { margin-top: 12px; background: #08080f; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 4px; padding: 10px 12px; font-size: 0.72rem; color: #a5b4fc; line-height: 1.7; white-space: pre; overflow-x: auto; }
+    .check-row { display: flex; align-items: center; gap: 8px; padding: 8px 0 6px; font-size: 0.78rem; color: var(--text); cursor: pointer; user-select: none; }
+    .check-row input { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; }
+    /* Controls bar */
+    .ctrl-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 0 2px; gap: 8px; max-width: 560px; }
+    .dpad { display: grid; grid-template-columns: repeat(3, 38px); grid-template-rows: repeat(3, 38px); gap: 2px; }
+    .btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border); border-radius: 6px; font-size: 15px; width: 38px; height: 38px; cursor: pointer; display: flex; align-items: center; justify-content: center; user-select: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; font-family: inherit; transition: background 0.06s, color 0.06s; }
+    .btn.held, .btn:active { background: #252542; color: var(--text); border-color: var(--accent); }
+    .ctrl-hint { flex: 1; text-align: center; color: var(--muted); font-size: 0.72rem; line-height: 1.7; }
+    .btn-col { display: flex; flex-direction: column; gap: 4px; }
+    @media (max-width: 740px) { body { padding: 12px; } .demo-area { flex-direction: column; } .info { width: 100%; min-height: auto; } .tab { padding: 6px 10px; font-size: 0.75rem; } }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>Lesson 7 — Camera</h1>
+    <p>Two demos: <strong>Free Camera</strong> (move, rotate, zoom — controls are always screen-aligned) and <strong>Camera Follow</strong> (smooth player tracking, with optional orientation follow via the <code>up</code> vector).</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="setDemo(0)">1. Free Camera</button>
+    <button class="tab"        onclick="setDemo(1)">2. Camera Follow</button>
+  </div>
+
+  <div class="demo-area">
+    <div class="canvas-col">
+      <canvas id="canvas" width="560" height="420"></canvas>
+      <div class="ctrl-bar">
+        <div class="dpad">
+          <div></div>
+          <button class="btn" id="btn-u" aria-label="Up">↑</button>
+          <div></div>
+          <button class="btn" id="btn-l" aria-label="Left">←</button>
+          <div></div>
+          <button class="btn" id="btn-r" aria-label="Right">→</button>
+          <div></div>
+          <button class="btn" id="btn-d" aria-label="Down">↓</button>
+          <div></div>
+        </div>
+        <div class="ctrl-hint" id="ctrl-hint">
+          WASD / arrows — move camera<br>Q / E — rotate &nbsp;·&nbsp; scroll / +&minus; — zoom
+        </div>
+        <div class="btn-col">
+          <button class="btn" id="btn-rl" aria-label="Rotate left"  style="font-size:16px;">↺</button>
+          <button class="btn" id="btn-rr" aria-label="Rotate right" style="font-size:16px;">↻</button>
+        </div>
+        <div class="btn-col">
+          <button class="btn" id="btn-zi" aria-label="Zoom in"  style="font-size:18px;font-weight:bold;">+</button>
+          <button class="btn" id="btn-zo" aria-label="Zoom out" style="font-size:18px;font-weight:bold;">−</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 0: Free Camera -->
+    <div class="info" id="panel-0">
+      <h3>Free Camera</h3>
+      <p>WASD/arrows moves the camera in its own <strong>screen-aligned axes</strong> — after rotating, W still goes toward screen-up, not world-up.</p>
+      <p>Q/E (or ↺/↻) change the <code>up</code> vector, rotating the entire view.</p>
+      <div class="val-row"><span class="val-label">cam x</span><span class="val-num accent" id="f-cx">0</span></div>
+      <div class="val-row"><span class="val-label">cam y</span><span class="val-num accent" id="f-cy">0</span></div>
+      <div class="val-row"><span class="val-label">zoom</span><span class="val-num"         id="f-zoom">×1.00</span></div>
+      <div class="val-row"><span class="val-label">cam angle</span><span class="val-num pink" id="f-rot">0°</span></div>
+      <div class="val-row"><span class="val-label">cam.up.x</span><span class="val-num pink"  id="f-ux">0.00</span></div>
+      <div class="val-row"><span class="val-label">cam.up.y</span><span class="val-num pink"  id="f-uy">-1.00</span></div>
+      <div class="code-block">// Rotate: keep a running angle
+camAngle += rotSpeed * dt; // Q/E
+cam.up = new Vector(
+   Math.sin(camAngle),
+  -Math.cos(camAngle),
+);
+
+// Move in screen-aligned axes
+const up    = cam.up;
+const right = new Vector(-up.y, up.x);
+cam.position.x += right.x * speed * dt;
+cam.position.y += right.y * speed * dt;
+cam.position.x += up.x    * speed * dt;
+cam.position.y += up.y    * speed * dt;</div>
+    </div>
+
+    <!-- Panel 1: Camera Follow -->
+    <div class="info" id="panel-1" style="display:none">
+      <h3>Camera Follow</h3>
+      <p>The camera smoothly follows the player using <strong>exponential decay</strong>.</p>
+      <p>Enable <em>Follow orientation</em> and the <code>up</code> vector rotates so the player always faces screen-up — the world tilts to match the movement direction.</p>
+      <label class="check-row">
+        <input type="checkbox" id="chk-orient">
+        <span>Follow player orientation</span>
+      </label>
+      <div class="val-row"><span class="val-label">player x</span><span class="val-num yellow"  id="c-px">0</span></div>
+      <div class="val-row"><span class="val-label">player y</span><span class="val-num yellow"  id="c-py">0</span></div>
+      <div class="val-row"><span class="val-label">cam angle</span><span class="val-num pink"   id="c-rot">0°</span></div>
+      <div class="val-row"><span class="val-label">cam.up.x</span><span class="val-num pink"    id="c-ux">0.00</span></div>
+      <div class="val-row"><span class="val-label">cam.up.y</span><span class="val-num pink"    id="c-uy">-1.00</span></div>
+      <div class="code-block">// Position follow (exponential decay)
+const k = 1 - Math.pow(0.02, dt);
+cam.position.x +=
+  (player.x - cam.position.x) * k;
+cam.position.y +=
+  (player.y - cam.position.y) * k;
+
+// Orientation follow — player faces up
+// target: player._facing + π/2
+const diff = wrapAngle(
+  target - camAngle);
+camAngle += diff * Math.min(1, 5*dt);
+cam.up = new Vector(
+   Math.sin(camAngle),
+  -Math.cos(camAngle),
+);</div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // Vector (from src/utils.js)
+    // =========================================================================
+    class Vector {
+      constructor(x = 0, y = 0) { this.x = x; this.y = y; }
+      static zero()         { return new Vector(0, 0); }
+      static one()          { return new Vector(1, 1); }
+      static from(v)        { return new Vector(v.x, v.y); }
+      static fromAngle(rad) { return new Vector(Math.cos(rad), Math.sin(rad)); }
+      set(x, y)   { this.x = x; this.y = y; return this; }
+      copy(v)     { this.x = v.x; this.y = v.y; return this; }
+      clone()     { return new Vector(this.x, this.y); }
+      add(v)      { this.x += v.x; this.y += v.y; return this; }
+      sub(v)      { this.x -= v.x; this.y -= v.y; return this; }
+      mul(v)      { this.x *= v.x; this.y *= v.y; return this; }
+      div(v)      { this.x /= v.x; this.y /= v.y; return this; }
+      scale(s)    { this.x *= s;   this.y *= s;   return this; }
+      negate()    { this.x = -this.x; this.y = -this.y; return this; }
+      normalize() { const l = this.length(); if (l > 0) { this.x /= l; this.y /= l; } return this; }
+      rotate(rad) { const c = Math.cos(rad), s = Math.sin(rad), nx = this.x * c - this.y * s; this.y = this.x * s + this.y * c; this.x = nx; return this; }
+      lerp(v, t)  { this.x += (v.x - this.x) * t; this.y += (v.y - this.y) * t; return this; }
+      length()    { return Math.sqrt(this.x * this.x + this.y * this.y); }
+      dot(v)      { return this.x * v.x + this.y * v.y; }
+      distance(v) { const dx = this.x - v.x, dy = this.y - v.y; return Math.sqrt(dx * dx + dy * dy); }
+      angle()     { return Math.atan2(this.y, this.x); }
+      toString()  { return `Vector(${this.x.toFixed(2)}, ${this.y.toFixed(2)})`; }
+    }
+
+    // =========================================================================
+    // SceneNode with event system (from src/core.js)
+    // =========================================================================
+    class SceneNode {
+      static _nextId = 0;
+      constructor() {
+        this.id = SceneNode._nextId++;
+        this.name = `node_${this.id}`;
+        this.scene = null;
+        this.position = Vector.zero();
+        this.angle = 0;
+        this.scale = Vector.one();
+        this.parent = null;
+        this._listeners = new Map();
+      }
+      setParent(node, keep = false) {
+        if (keep) {
+          const wp = this.getWorldPosition(), wa = this.getWorldAngle(), ws = this.getWorldScale();
+          this.parent = node;
+          this.setWorldPosition(wp); this.setWorldAngle(wa); this.setWorldScale(ws);
+        } else { this.parent = node; }
+      }
+      getWorldPosition() {
+        if (!this.parent) return this.position.clone();
+        const p = this.parent.getWorldPosition(), pa = this.parent.getWorldAngle(), ps = this.parent.getWorldScale();
+        return p.add(this.position.clone().mul(ps).rotate(pa));
+      }
+      setWorldPosition(w) {
+        if (!this.parent) { this.position.set(w.x, w.y); return; }
+        const p = this.parent.getWorldPosition(), pa = this.parent.getWorldAngle(), ps = this.parent.getWorldScale();
+        this.position.copy(w.sub(p).rotate(-pa).div(ps));
+      }
+      getWorldAngle()   { return this.parent ? this.parent.getWorldAngle() + this.angle : this.angle; }
+      setWorldAngle(wa) { this.angle = this.parent ? wa - this.parent.getWorldAngle() : wa; }
+      getWorldScale()   { return this.parent ? this.parent.getWorldScale().mul(this.scale) : this.scale.clone(); }
+      setWorldScale(ws) { this.scale.copy(this.parent ? ws.clone().div(this.parent.getWorldScale()) : ws.clone()); }
+      on(type, handler) {
+        if (!this._listeners.has(type)) this._listeners.set(type, new Set());
+        this._listeners.get(type).add(handler);
+      }
+      once(type, handler) { const w = e => { this.off(type, w); handler(e); }; this.on(type, w); }
+      off(type, handler)  { this._listeners.get(type)?.delete(handler); }
+      emit(type, data) {
+        const ls = this._listeners.get(type);
+        if (!ls) return;
+        const ev = { type, data, target: this };
+        for (const h of [...ls]) h(ev);
+      }
+      start()    {}
+      update(dt) {}
+      destroy()  { this._listeners.clear(); }
+    }
+
+    // =========================================================================
+    // Scene (from src/core.js)
+    // =========================================================================
+    class Scene {
+      constructor() { this.nodes = []; this.pending = []; this.pendingRemoval = []; this.running = false; }
+      addNode(node) {
+        node.scene = this;
+        if (this.running) { this.pending.push(node); }
+        else { this.nodes.push(node); node.start(); }
+      }
+      removeNode(node) {
+        const pi = this.pending.indexOf(node);
+        if (pi !== -1) { this.pending.splice(pi, 1); node.destroy(); node.scene = null; return; }
+        if (this.running) { this.pendingRemoval.push(node); }
+        else { const i = this.nodes.indexOf(node); if (i !== -1) { this.nodes.splice(i, 1); node.destroy(); node.scene = null; } }
+      }
+      findNode(name)     { return this.nodes.find(n => n.name === name) ?? null; }
+      findNodesByType(T) { return this.nodes.filter(n => n instanceof T); }
+      start()    { this.running = true; }
+      update(dt) {
+        if (this.pendingRemoval.length > 0) {
+          for (const n of this.pendingRemoval) { const i = this.nodes.indexOf(n); if (i !== -1) this.nodes.splice(i, 1); n.destroy(); n.scene = null; }
+          this.pendingRemoval = [];
+        }
+        if (this.pending.length > 0) {
+          for (const n of this.pending) { this.nodes.push(n); n.start(); }
+          this.pending = [];
+        }
+        for (const n of this.nodes) n.update(dt);
+      }
+      destroy() { this.running = false; }
+    }
+
+    // =========================================================================
+    // SceneManager (from src/core.js)
+    // =========================================================================
+    class SceneManager {
+      constructor() { this.registry = new Map(); this.currentScene = null; }
+      register(name, init) { this.registry.set(name, init); }
+      update(dt) { if (this.currentScene) this.currentScene.update(dt); }
+      switchScene(name, params = {}) {
+        const init = this.registry.get(name);
+        if (!init) throw new Error(`SceneManager: Unknown scene "${name}"`);
+        if (this.currentScene) this.currentScene.destroy();
+        const scene = new Scene();
+        init(scene, params);
+        scene.start();
+        this.currentScene = scene;
+      }
+    }
+
+    // =========================================================================
+    // Drawable (from src/graphics.js)
+    // =========================================================================
+    class Drawable extends SceneNode {
+      constructor(params = {}) {
+        super();
+        this.zIndex = params.zIndex ?? 0;
+        this.camera = params.camera ?? null;
+      }
+      draw(ctx) {}
+    }
+
+    // =========================================================================
+    // RectDrawable (from src/graphics.js)
+    // =========================================================================
+    class RectDrawable extends Drawable {
+      constructor(params = {}) {
+        super(params);
+        this.width       = params.width       ?? 40;
+        this.height      = params.height      ?? 40;
+        this.fillColor   = params.fillColor   ?? null;
+        this.strokeColor = params.strokeColor ?? null;
+        this.lineWidth   = params.lineWidth   ?? 1;
+      }
+      draw(ctx) {
+        ctx.beginPath();
+        ctx.rect(-this.width / 2, -this.height / 2, this.width, this.height);
+        if (this.fillColor   !== null) { ctx.fillStyle   = this.fillColor;   ctx.fill(); }
+        if (this.strokeColor !== null) { ctx.strokeStyle = this.strokeColor; ctx.lineWidth = this.lineWidth; ctx.stroke(); }
+      }
+    }
+
+    // =========================================================================
+    // Camera (from src/graphics.js)
+    // =========================================================================
+    class Camera extends SceneNode {
+      constructor(params) {
+        super();
+        this.viewport = params.viewport;
+        this.zoom     = params.zoom ?? 1;
+        this.up       = new Vector(0, -1);
+      }
+      getViewMatrix() {
+        const pos   = this.getWorldPosition();
+        const up    = new Vector(-this.up.x, -this.up.y);
+        const right = new Vector(up.y, -up.x);
+        const T = new DOMMatrix([1, 0, 0, 1, -pos.x, -pos.y]);
+        const R = new DOMMatrix([right.x, up.x, right.y, up.y, 0, 0]);
+        const Z = new DOMMatrix([this.zoom, 0, 0, this.zoom, 0, 0]);
+        return Z.multiply(R).multiply(T);
+      }
+      getProjMatrix(screenW, screenH) {
+        const scaleX = screenW / this.viewport.width;
+        const scaleY = screenH / this.viewport.height;
+        return new DOMMatrix([scaleX, 0, 0, scaleY, screenW / 2, screenH / 2]);
+      }
+    }
+
+    // =========================================================================
+    // Renderer — camera-aware (from src/graphics.js)
+    // =========================================================================
+    class Renderer {
+      constructor(canvas) { this.canvas = canvas; this.ctx = canvas.getContext('2d'); this.clearColor = '#000000'; }
+      render(drawables) {
+        if (this.clearColor !== null) { this.ctx.fillStyle = this.clearColor; this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height); }
+        const layers = new Map();
+        const cameraMatrices = new Map();
+        const W = this.canvas.width, H = this.canvas.height;
+        for (const d of drawables) {
+          const key = this._getLayerKey(d);
+          if (!layers.has(key)) layers.set(key, { zIndex: d.zIndex, drawables: [] });
+          layers.get(key).drawables.push(d);
+          if (d.camera !== null && !cameraMatrices.has(d.camera.id)) {
+            cameraMatrices.set(d.camera.id, d.camera.getProjMatrix(W, H).multiply(d.camera.getViewMatrix()));
+          }
+        }
+        for (const layer of [...layers.values()].sort((a, b) => a.zIndex - b.zIndex)) {
+          for (const d of layer.drawables) { this.ctx.setTransform(this._computeMatrix(d, cameraMatrices)); d.draw(this.ctx); }
+        }
+        this.ctx.resetTransform();
+      }
+      _computeMatrix(d, cameraMatrices) {
+        const pos = d.getWorldPosition(), angle = d.getWorldAngle(), scale = d.getWorldScale();
+        const cos = Math.cos(angle), sin = Math.sin(angle);
+        const world = new DOMMatrix([scale.x * cos, scale.x * sin, -scale.y * sin, scale.y * cos, pos.x, pos.y]);
+        return d.camera !== null ? cameraMatrices.get(d.camera.id).multiply(world) : world;
+      }
+      _getLayerKey(d) { return `${d.zIndex}:${d.camera?.id ?? ''}`; }
+    }
+
+    // =========================================================================
+    // Input
+    // =========================================================================
+    const keys  = {};
+    const touch = {};
+
+    window.addEventListener('keydown', e => { keys[e.key] = true;  if (!e.metaKey && !e.ctrlKey) e.preventDefault(); });
+    window.addEventListener('keyup',   e => { keys[e.key] = false; });
+
+    function bindBtn(id, name) {
+      const el = document.getElementById(id);
+      const on  = () => { touch[name] = true;  el.classList.add('held'); };
+      const off = () => { touch[name] = false; el.classList.remove('held'); };
+      el.addEventListener('pointerdown',  on);
+      el.addEventListener('pointerup',    off);
+      el.addEventListener('pointercancel',off);
+      el.addEventListener('pointerleave', off);
+    }
+    bindBtn('btn-u',  'up');
+    bindBtn('btn-d',  'down');
+    bindBtn('btn-l',  'left');
+    bindBtn('btn-r',  'right');
+    bindBtn('btn-rl', 'rotL');
+    bindBtn('btn-rr', 'rotR');
+    bindBtn('btn-zi', 'zoomIn');
+    bindBtn('btn-zo', 'zoomOut');
+
+    const canvas   = document.getElementById('canvas');
+    const renderer = new Renderer(canvas);
+    renderer.clearColor = '#08080f';
+
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      if (cam) cam.zoom = Math.max(0.2, Math.min(8, cam.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+    }, { passive: false });
+
+    // =========================================================================
+    // Shared world builder
+    // =========================================================================
+    function buildWorld(scene, cam) {
+      // Grid
+      for (let x = -640; x <= 640; x += 80) {
+        const g = new RectDrawable({ width: 1, height: 2000, fillColor: '#12122a', strokeColor: null, zIndex: -2, camera: cam });
+        g.position.set(x, 0);
+        scene.addNode(g);
+      }
+      for (let y = -480; y <= 480; y += 80) {
+        const g = new RectDrawable({ width: 2000, height: 1, fillColor: '#12122a', strokeColor: null, zIndex: -2, camera: cam });
+        g.position.set(0, y);
+        scene.addNode(g);
+      }
+
+      // Landmarks
+      const landmarks = [
+        { x:    0, y:    0, w: 18, h: 18, fill: '#ffffff' },
+        { x: -200, y: -150, w: 48, h: 48, fill: '#e94560', tag: 'A' },
+        { x:  200, y: -150, w: 48, h: 48, fill: '#11a070', tag: 'B' },
+        { x: -200, y:  150, w: 48, h: 48, fill: '#e9a020', tag: 'C' },
+        { x:  200, y:  150, w: 48, h: 48, fill: '#5030b0', tag: 'D' },
+        { x:    0, y: -280, w: 36, h: 36, fill: '#40b0e0', tag: 'E' },
+        { x:    0, y:  280, w: 36, h: 36, fill: '#d040c0', tag: 'F' },
+        { x: -380, y:    0, w: 36, h: 36, fill: '#90d030', tag: 'G' },
+        { x:  380, y:    0, w: 36, h: 36, fill: '#e06020', tag: 'H' },
+      ];
+      for (const lm of landmarks) {
+        const box = new RectDrawable({
+          width: lm.w, height: lm.h,
+          fillColor: lm.fill, strokeColor: 'rgba(255,255,255,0.12)', lineWidth: 1,
+          zIndex: 0, camera: cam,
+        });
+        box.position.set(lm.x, lm.y);
+        scene.addNode(box);
+
+        if (lm.tag) {
+          const lbl = new Drawable({ zIndex: 1, camera: cam });
+          lbl.position.set(lm.x, lm.y + lm.h / 2 + 5);
+          const tag = lm.tag;
+          lbl.draw = ctx => {
+            ctx.font = '9px Consolas, monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillText(tag, 1, 1);
+            ctx.fillStyle = '#666';
+            ctx.fillText(tag, 0, 0);
+          };
+          scene.addNode(lbl);
+        }
+      }
+    }
+
+    // Shortest-arc angle difference, result in (-π, π]
+    function wrapAngle(a) { return ((a + Math.PI * 3) % (Math.PI * 2)) - Math.PI; }
+
+    // =========================================================================
+    // Scene state (written by active scene's controller, read by loop)
+    // =========================================================================
+    let cam    = null;
+    let player = null; // only in follow scene
+
+    // =========================================================================
+    // Scene 0 — Free Camera
+    //   WASD / D-pad : move camera in its own screen-aligned axes
+    //   Q/E / ↺↻     : rotate (change cam.up)
+    //   scroll / +−  : zoom
+    // =========================================================================
+    const sm = new SceneManager();
+
+    sm.register('free', scene => {
+      cam    = new Camera({ viewport: { width: 560, height: 420 }, zoom: 1 });
+      player = null;
+      scene.addNode(cam);
+      buildWorld(scene, cam);
+
+      class FreeCameraController extends SceneNode {
+        constructor() { super(); this._angle = 0; }
+        update(dt) {
+          const moveSpeed = 220;
+          const rotSpeed  = Math.PI * 0.7;
+
+          // Screen-aligned movement: derive axes from cam.up each frame
+          const up    = cam.up;
+          const right = new Vector(-up.y, up.x);
+
+          const mx = (keys['ArrowRight'] || keys['d'] || keys['D'] || touch.right ? 1 : 0)
+                   - (keys['ArrowLeft']  || keys['a'] || keys['A'] || touch.left  ? 1 : 0);
+          const my = (keys['ArrowDown']  || keys['s'] || keys['S'] || touch.down  ? 1 : 0)
+                   - (keys['ArrowUp']    || keys['w'] || keys['W'] || touch.up    ? 1 : 0);
+
+          // Project move intent onto world axes
+          cam.position.x += (mx * right.x - my * up.x) * moveSpeed * dt;
+          cam.position.y += (mx * right.y - my * up.y) * moveSpeed * dt;
+
+          // Rotate
+          if (touch.rotL || keys['q'] || keys['Q']) this._angle -= rotSpeed * dt;
+          if (touch.rotR || keys['e'] || keys['E']) this._angle += rotSpeed * dt;
+          cam.up = new Vector(Math.sin(this._angle), -Math.cos(this._angle));
+
+          // Zoom
+          if (touch.zoomIn  || keys['+'] || keys['=']) cam.zoom = Math.min(8,   cam.zoom * Math.pow(2.5, dt));
+          if (touch.zoomOut || keys['-'] || keys['_']) cam.zoom = Math.max(0.2, cam.zoom / Math.pow(2.5, dt));
+        }
+      }
+      scene.addNode(new FreeCameraController());
+    });
+
+    // =========================================================================
+    // Scene 1 — Camera Follow
+    //   WASD / D-pad : move player
+    //   checkbox     : orient cam.up to follow player movement direction
+    //   scroll / +−  : zoom
+    // =========================================================================
+    sm.register('follow', scene => {
+      cam = new Camera({ viewport: { width: 560, height: 420 }, zoom: 1 });
+      scene.addNode(cam);
+      buildWorld(scene, cam);
+
+      class Player extends Drawable {
+        constructor() {
+          super({ zIndex: 2, camera: cam });
+          this.speed     = 180;
+          this.rotSpeed  = Math.PI * 1.5;
+          this._facing   = 0;   // radians
+          this._isMoving = false;
+        }
+        update(dt) {
+          const turn    = (keys['ArrowRight'] || keys['d'] || keys['D'] || touch.right ? 1 : 0)
+                        - (keys['ArrowLeft']  || keys['a'] || keys['A'] || touch.left  ? 1 : 0);
+          const forward = (keys['ArrowUp']    || keys['w'] || keys['W'] || touch.up    ? 1 : 0)
+                        - (keys['ArrowDown']  || keys['s'] || keys['S'] || touch.down  ? 1 : 0);
+
+          // A/D rotate the player
+          this._facing += turn * this.rotSpeed * dt;
+
+          // W/S move in the facing direction
+          this._isMoving = forward !== 0;
+          if (this._isMoving) {
+            this.position.x += Math.cos(this._facing) * forward * this.speed * dt;
+            this.position.y += Math.sin(this._facing) * forward * this.speed * dt;
+          }
+          this.angle = this._facing;
+        }
+        draw(ctx) {
+          ctx.beginPath();
+          ctx.moveTo( 16,  0);
+          ctx.lineTo(-11, -9);
+          ctx.lineTo(-11,  9);
+          ctx.closePath();
+          ctx.fillStyle = '#4ade80';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+
+      player = new Player();
+      scene.addNode(player);
+
+      class CameraFollower extends SceneNode {
+        constructor() { super(); this._angle = 0; }
+        update(dt) {
+          // Smooth position follow (frame-rate-independent exponential decay)
+          const decay = 1 - Math.pow(0.02, dt);
+          cam.position.x += (player.position.x - cam.position.x) * decay;
+          cam.position.y += (player.position.y - cam.position.y) * decay;
+
+          // Orientation: follow player facing, or reset to default
+          const followOrient = document.getElementById('chk-orient').checked;
+          if (followOrient) {
+            // target angle such that player._facing maps to screen-up
+            const target = player._facing + Math.PI / 2;
+            this._angle += wrapAngle(target - this._angle) * Math.min(1, 5 * dt);
+            cam.up = new Vector(Math.sin(this._angle), -Math.cos(this._angle));
+          } else if (!followOrient) {
+            this._angle = 0;
+            cam.up = new Vector(0, -1);
+          }
+
+          // Zoom
+          if (touch.zoomIn  || keys['+'] || keys['=']) cam.zoom = Math.min(8,   cam.zoom * Math.pow(2.5, dt));
+          if (touch.zoomOut || keys['-'] || keys['_']) cam.zoom = Math.max(0.2, cam.zoom / Math.pow(2.5, dt));
+        }
+      }
+      scene.addNode(new CameraFollower());
+    });
+
+    // =========================================================================
+    // Demo switching
+    // =========================================================================
+    const hintTexts = [
+      'WASD / arrows — move camera<br>Q / E — rotate &nbsp;·&nbsp; scroll / +&minus; — zoom',
+      'WASD / arrows — move player<br>scroll / +&minus; — zoom',
+    ];
+
+    function setDemo(i) {
+      document.querySelectorAll('.tab').forEach((t, idx) => t.classList.toggle('active', idx === i));
+      document.querySelectorAll('.info').forEach((p, idx) => p.style.display = idx === i ? '' : 'none');
+      document.getElementById('ctrl-hint').innerHTML = hintTexts[i];
+      // Show/hide rotation buttons — only meaningful for free camera
+      const rotBtns = document.querySelectorAll('#btn-rl, #btn-rr');
+      rotBtns.forEach(b => b.style.visibility = i === 0 ? '' : 'hidden');
+      sm.switchScene(i === 0 ? 'free' : 'follow');
+    }
+
+    sm.switchScene('free');
+
+    // =========================================================================
+    // Main loop
+    // =========================================================================
+    let lastTime = 0;
+
+    function loop(ts) {
+      const dt = Math.min((ts - lastTime) / 1000, 0.05);
+      lastTime = ts;
+
+      sm.update(dt);
+      renderer.render(sm.currentScene.findNodesByType(Drawable));
+
+      if (!cam) { requestAnimationFrame(loop); return; }
+
+      // Derive display angle from cam.up (no separate global needed)
+      const dispAngle = Math.round(Math.atan2(cam.up.x, -cam.up.y) * 180 / Math.PI);
+
+      // Panel 0 (free camera)
+      document.getElementById('f-cx').textContent   = Math.round(cam.position.x);
+      document.getElementById('f-cy').textContent   = Math.round(cam.position.y);
+      document.getElementById('f-zoom').textContent = '×' + cam.zoom.toFixed(2);
+      document.getElementById('f-rot').textContent  = dispAngle + '°';
+      document.getElementById('f-ux').textContent   = cam.up.x.toFixed(2);
+      document.getElementById('f-uy').textContent   = cam.up.y.toFixed(2);
+
+      // Panel 1 (camera follow)
+      if (player) {
+        document.getElementById('c-px').textContent  = Math.round(player.position.x);
+        document.getElementById('c-py').textContent  = Math.round(player.position.y);
+      }
+      document.getElementById('c-rot').textContent = dispAngle + '°';
+      document.getElementById('c-ux').textContent  = cam.up.x.toFixed(2);
+      document.getElementById('c-uy').textContent  = cam.up.y.toFixed(2);
+
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+  </script>
+
+</body>
+</html>

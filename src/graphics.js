@@ -1,5 +1,5 @@
 /**
- * @typedef {{ zIndex?: number; }} DrawableParams
+ * @typedef {{ zIndex?: number, camera?: Camera | null }} DrawableParams
  */
 
 /**
@@ -20,6 +20,10 @@ class Drawable extends SceneNode {
      * @type {number}
      */
     zIndex;
+    /**
+     * @type {Camera | null}
+     */
+    camera;
 
     /**
      * @param {DrawableParams} params
@@ -27,6 +31,7 @@ class Drawable extends SceneNode {
     constructor(params = {}) {
         super();
         this.zIndex = params.zIndex ?? 0;
+        this.camera = params.camera ?? null;
     }
 
     /**
@@ -448,6 +453,137 @@ class Animator extends SceneNode {
 }
 
 /**
+ * @typedef {{ width: number, height: number }} Viewport
+ */
+
+/**
+ * @typedef {{ viewport: Viewport, zoom?: number }} CameraParams
+ */
+
+/**
+ * A SceneNode that defines the view and projection used to render a scene.
+ *
+ * Attach a Camera to a Drawable (via `drawable.camera`) to have that drawable
+ * rendered through this camera's view. Drawables with `camera === null` are
+ * drawn with an identity transform — useful for screen-space UI elements.
+ *
+ * The camera looks "into" the screen along the -Z axis. `up` controls which
+ * world direction appears as screen-up; the default `(0, -1)` matches canvas
+ * convention where Y increases downward.
+ *
+ * `zoom` scales the view uniformly: values > 1 zoom in (world units appear
+ * larger), values < 1 zoom out. Zoom is applied in view space before
+ * projection, so it is independent of the viewport size.
+ *
+ * Typical setup:
+ *   const camera = new Camera({ viewport: { width: 320, height: 180 } });
+ *   scene.addNode(camera);
+ *   sprite.camera = camera;
+ *   camera.position.set(playerX, playerY); // follow the player
+ */
+class Camera extends SceneNode {
+    /**
+     * The world direction that maps to screen-up.
+     *
+     * Defaults to `(0, -1)`, which matches canvas convention (Y increases
+     * downward). Set to `(0, 1)` for a Y-up world. The vector does not need to
+     * be normalized — it is re-normalized internally by `getViewMatrix()`.
+     * @type {Vector}
+     */
+    up;
+    /**
+     * The logical size of the camera's view in world units.
+     *
+     * `getProjMatrix()` maps this rectangle to the full canvas. A viewport of
+     * `{ width: 320, height: 180 }` on a 640×360 canvas produces a ×2 pixel
+     * scale with no extra zoom applied.
+     * @type {Viewport}
+     */
+    viewport;
+    /**
+     * Uniform zoom factor applied on top of the viewport-to-canvas scale.
+     *
+     * `1` (default) means no extra zoom. `2` makes world objects appear twice
+     * as large; `0.5` makes them half as large. Must be > 0.
+     * @type {number}
+     */
+    zoom;
+
+    /**
+     * @param {CameraParams} params
+     */
+    constructor(params) {
+        super();
+
+        this.viewport = params.viewport;
+        this.zoom = params.zoom ?? 1;
+        this.up = new Vector(0, -1);
+    }
+
+    /**
+     * Returns the view matrix for this camera.
+     *
+     * The view matrix transforms world-space coordinates into camera space:
+     * it translates the world so the camera position is at the origin, rotates
+     * it to align the camera's `up` direction with screen-up, and then scales
+     * uniformly by `zoom`.
+     *
+     * The full per-drawable transform applied by Renderer is:
+     *   projMatrix × viewMatrix × worldMatrix
+     *
+     * @returns {DOMMatrix}
+     */
+    getViewMatrix() {
+        const pos = this.getWorldPosition();
+        const up = new Vector(-this.up.x, -this.up.y);
+        const right = new Vector(up.y, -up.x);
+
+        const T = new DOMMatrix([
+            1, 0,
+            0, 1,
+            -pos.x, -pos.y
+        ]);
+
+        const R = new DOMMatrix([
+            right.x, up.x,
+            right.y, up.y,
+            0, 0
+        ]);
+
+        const Z = new DOMMatrix([
+            this.zoom, 0,
+            0, this.zoom,
+            0, 0
+        ]);
+
+        return Z.multiply(R).multiply(T);
+    }
+
+    /**
+     * Returns a projection matrix that maps camera space into canvas pixel
+     * space, placing the camera origin at the center of the canvas.
+     *
+     * Scale factors are derived from the viewport-to-canvas ratio:
+     *   scaleX = screenW / viewport.width
+     *   scaleY = screenH / viewport.height
+     *
+     * @param {number} screenW  Canvas width in pixels.
+     * @param {number} screenH  Canvas height in pixels.
+     * @returns {DOMMatrix}
+     */
+    getProjMatrix(screenW, screenH) {
+        const scaleX = screenW / this.viewport.width;
+        const scaleY = screenH / this.viewport.height;
+
+        return new DOMMatrix([
+            scaleX, 0,
+            0, scaleY,
+            screenW / 2, screenH / 2,
+        ]);
+    }
+}
+
+/**
  * Internal grouping of drawables that share a zIndex.
  * @typedef {{ zIndex: number, drawables: Drawable[] }} RenderLayer
  */
@@ -508,9 +644,14 @@ class Renderer {
         }
 
         // Group drawables by zIndex so we can sort layers without a full sort
-        // of the entire drawables array.
+        // of the entire drawables array. Build the per-camera matrix cache in
+        // the same pass to avoid a second iteration.
         /** @type {Map<string, RenderLayer>} */
         const layers = new Map();
+        /** @type {Map<string, DOMMatrix>} */
+        const cameraMatrices = new Map();
+        const W = this.canvas.width;
+        const H = this.canvas.height;
 
         for (const drawable of drawables) {
             const key = this._getLayerKey(drawable);
@@ -518,11 +659,19 @@ class Renderer {
                 layers.set(key, { zIndex: drawable.zIndex, drawables: [] });
             }
             layers.get(key).drawables.push(drawable);
+
+            const cam = drawable.camera;
+            if (cam !== null) {
+                const camKey = cam.id;
+                if (!cameraMatrices.has(camKey)) {
+                    cameraMatrices.set(camKey, cam.getProjMatrix(W, H).multiply(cam.getViewMatrix()));
+                }
+            }
         }
 
         for (const layer of [...layers.values()].sort((a, b) => a.zIndex - b.zIndex)) {
             for (const drawable of layer.drawables) {
-                this.ctx.setTransform(this._computeMatrix(drawable));
+                this.ctx.setTransform(this._computeMatrix(drawable, cameraMatrices));
                 drawable.draw(this.ctx);
             }
         }
@@ -543,13 +692,13 @@ class Renderer {
      * @param {Drawable} drawable
      * @returns {DOMMatrix}
      */
-    _computeMatrix(drawable) {
+    _computeMatrix(drawable, cameraMatrices) {
         const pos = drawable.getWorldPosition();
         const angle = drawable.getWorldAngle();
         const scale = drawable.getWorldScale();
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
-        return new DOMMatrix([
+        const transformMatrix = new DOMMatrix([
             scale.x * cos,   // a
             scale.x * sin,   // b
             -scale.y * sin,  // c
@@ -557,6 +706,11 @@ class Renderer {
             pos.x,           // e (tx)
             pos.y,           // f (ty)
         ]);
+        if (drawable.camera !== null) {
+            const camKey = drawable.camera.id;
+            return cameraMatrices.get(camKey).multiply(transformMatrix);
+        }
+        return transformMatrix;
     }
 
     /**
@@ -567,6 +721,6 @@ class Renderer {
      * @returns {string}
      */
     _getLayerKey(drawable) {
-        return `${drawable.zIndex}`;
+        return `${drawable.zIndex}:${drawable.camera?.id ?? ''}`;
     }
 }

@@ -174,6 +174,10 @@ class Scene {
      * @param {SceneNode} node
      */
     removeNode(node) {
+        for (const child of [...node.children]) {
+            this.removeNode(child);
+        }
+
         const pendingIdx = this.pending.indexOf(node);
         if (pendingIdx !== -1) {
             this.pending.splice(pendingIdx, 1);
@@ -183,7 +187,9 @@ class Scene {
         }
 
         if (this.running) {
-            this.pendingRemoval.push(node);
+            if (!this.pendingRemoval.includes(node)) {
+                this.pendingRemoval.push(node);
+            }
         } else {
             const idx = this.nodes.indexOf(node);
             if (idx !== -1) {
@@ -306,6 +312,10 @@ class SceneNode {
      */
     parent;
     /**
+     * @type {SceneNode[]}
+     */
+    children;
+    /**
      * @type {Map<string, Set<Function>>}
      */
     _listeners;
@@ -318,6 +328,7 @@ class SceneNode {
         this.angle = 0;
         this.scale = Vector.one();
         this.parent = null;
+        this.children = [];
         this._listeners = new Map();
     }
 
@@ -330,6 +341,11 @@ class SceneNode {
      * @param {boolean} keepWorldPosition
      */
     setParent(node, keepWorldPosition = false) {
+        if (this.parent) {
+            const idx = this.parent.children.indexOf(this);
+            if (idx !== -1) this.parent.children.splice(idx, 1);
+        }
+
         if (keepWorldPosition) {
             const wp = this.getWorldPosition();
             const wa = this.getWorldAngle();
@@ -340,6 +356,10 @@ class SceneNode {
             this.setWorldScale(ws);
         } else {
             this.parent = node;
+        }
+
+        if (node) {
+            node.children.push(this);
         }
     }
 
