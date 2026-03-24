@@ -467,7 +467,7 @@
       ]
     },
     {
-      "title": "Camera — Concepts",
+      "title": "Camera — View Matrix",
       "nodes": [
         {
           "type": 1,
@@ -490,16 +490,6 @@
           "text": "## Building the View Matrix\n\nThe view matrix transforms world-space coordinates into camera space. There are two ways to think about it — start with the easy direction.\n\n### Step 1 — Camera Space to World Space\n\nImagine the camera sitting at the world origin, looking straight ahead. We want the matrix that moves a point from camera space into world space:\n\n- **Rotate** it using the camera's own `right` and `up` vectors as the basis columns.\n- **Translate** it to the camera's world position `P`.\n\nIf the camera is at `P = (Px, Py)` and its screen-right direction is `R = (rx, ry)` and screen-up is `U = (ux, uy)`, the camera-to-world matrix is:\n\n```\ncam→world = | rx  ux  Px |\n            | ry  uy  Py |\n            |  0   0   1 |\n```\n\n### Step 2 — World Space to Camera Space (the view matrix)\n\nWe need the *inverse* — the other direction. Because the rotation part is orthonormal, its inverse is its transpose. Combined with a negated translation:\n\n```\nviewMatrix = R × T\n\nwhere:\n  T translates by (-Px, -Py)           // bring camera to origin\n  R is the transpose of the rotation   // rotate world into camera orientation\n```\n\nIn matrix form:\n\n```\nR = | rx  ry  0 |    T = | 1  0  -Px |\n    | ux  uy  0 |        | 0  1  -Py |\n    |  0   0  1 |        | 0  0    1 |\n```\n\nThe engine applies zoom `Z` on top (before projection):\n\n```js\nreturn Z.multiply(R).multiply(T);  // = Z × R × T\n```\n\n### Reading the Code\n\n```js\ngetViewMatrix() {\n    const pos   = this.getWorldPosition();\n    const up    = new Vector(-this.up.x, -this.up.y);  // flip for canvas Y-down\n    const right = new Vector(up.y, -up.x);              // 90° CW from up\n\n    const T = new DOMMatrix([1, 0, 0, 1, -pos.x, -pos.y]);\n    const R = new DOMMatrix([right.x, up.x, right.y, up.y, 0, 0]);\n    const Z = new DOMMatrix([this.zoom, 0, 0, this.zoom, 0, 0]);\n\n    return Z.multiply(R).multiply(T);\n}\n```\n\nThe `R` matrix has `right` and `up` in its **rows** (not columns) — that is the transpose. The `right` vector is derived from `up` by a 90° clockwise rotation: if `up = (ux, uy)` then `right = (uy, -ux)`."
         },
         {
-          "type": 1,
-          "mode": 1,
-          "text": "## The Projection Matrix\n\nAfter the view matrix transforms everything into camera space (camera at origin, world rotated and zoomed around it), the projection matrix maps that space onto the actual canvas pixels.\n\n### What It Does\n\nThe camera's `viewport` describes a logical rectangle in world units — how wide and tall the visible area is. The projection matrix scales this rectangle to fill the canvas and shifts the origin from the top-left corner to the canvas center:\n\n```\nscaleX = canvasWidth  / viewport.width\nscaleY = canvasHeight / viewport.height\n\nprojMatrix = | scaleX      0    canvasW/2 |\n             |      0   scaleY  canvasH/2 |\n             |      0       0           1 |\n```\n\n### What the Numbers Mean\n\n- A point at camera-space `(0, 0)` maps to the canvas center `(canvasW/2, canvasH/2)`.\n- A point at `(-viewport.width/2, -viewport.height/2)` maps to the top-left corner `(0, 0)`.\n\n### Viewport, Canvas, and Zoom\n\nThe viewport defines world units; the canvas size sets pixel dimensions; zoom scales the view:\n\n- Viewport `320×180` on a `640×360` canvas → `scaleX = scaleY = 2`, so each world unit is 2 pixels with no extra zoom.\n- Same setup with `zoom = 2` → objects appear 4× their pixel size (viewport zoom is applied first, then canvas scale).\n- Changing the canvas size at runtime is safe — `getProjMatrix(W, H)` takes the current dimensions each frame.\n\n### In the Engine\n\n```js\ngetProjMatrix(screenW, screenH) {\n    const scaleX = screenW / this.viewport.width;\n    const scaleY = screenH / this.viewport.height;\n    return new DOMMatrix([\n        scaleX, 0,\n        0,      scaleY,\n        screenW / 2, screenH / 2,\n    ]);\n}\n```"
-        },
-        {
-          "type": 1,
-          "mode": 1,
-          "text": "## Camera in the Engine\n\nHere is how the camera concepts land in the actual graphics.js code.\n\n### The Camera Class\n\n`Camera` extends `SceneNode` — it lives in the scene graph and inherits position, angle, and parenting. You can parent it to a player node for free-following, or move it directly.\n\n```js\nconst cam = new Camera({\n    viewport: { width: 320, height: 180 },\n    zoom: 1,\n});\ncam.up = new Vector(0, -1);   // default: canvas Y-down\nscene.addNode(cam);\n\n// Attach to a Drawable:\nsprite.camera = cam;\n```\n\n### RenderLayer Key Includes Camera ID\n\nDrawables with different cameras must be grouped separately — they live in different coordinate spaces even if they share the same `zIndex`. The bucket key now includes the camera ID:\n\n```js\n_getLayerKey(drawable) {\n    return `${drawable.zIndex}:${drawable.camera?.id ?? ''}`;\n}\n```\n\n### Camera Matrix Cache\n\n`proj × view` is identical for every drawable that shares the same camera. `render()` computes it once per camera in the first pass:\n\n```js\nconst cameraMatrices = new Map();\n\nfor (const drawable of drawables) {\n    const cam = drawable.camera;\n    if (cam !== null && !cameraMatrices.has(cam.id)) {\n        cameraMatrices.set(cam.id, cam.getProjMatrix(W, H).multiply(cam.getViewMatrix()));\n    }\n}\n```\n\nOne matrix multiplication per camera per frame — not one per drawable.\n\n### _computeMatrix() — The Final Combination\n\n```js\n_computeMatrix(drawable, cameraMatrices) {\n    // ... build worldMatrix from world pos, angle, scale ...\n\n    if (drawable.camera !== null) {\n        const camMatrix = cameraMatrices.get(drawable.camera.id);\n        return camMatrix.multiply(worldMatrix);  // (proj × view) × world\n    }\n    return worldMatrix;   // camera = null → raw pixel coords\n}\n```\n\n`ctx.setTransform(matrix)` is called with this result before each `draw()` — the rest of the draw loop is unchanged from the previous lesson."
-        },
-        {
           "type": 2,
           "text": "In the transform pipeline finalMatrix = proj × view × world, what does the view matrix do?",
           "answers": [
@@ -520,12 +510,7 @@
               "correct": false
             }
           ]
-        }
-      ]
-    },
-    {
-      "title": "Camera — Implementation",
-      "nodes": [
+        },
         {
           "type": 2,
           "text": "The camera's rotation matrix has an orthonormal basis (right and up are unit vectors, perpendicular to each other). What does this mean for computing its inverse?",
@@ -550,79 +535,72 @@
         },
         {
           "type": 4,
-          "text": "A Drawable rendered as a HUD should never move when the camera moves. What value do you assign to drawable.camera to achieve this?",
-          "correctAnswer": "null"
+          "text": "What is the dot product of two orthogonal unit vectors? (answer with a number)",
+          "correctAnswer": "0"
+        }
+      ]
+    },
+    {
+      "title": "Camera — Projection & Rendering",
+      "nodes": [
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## The Projection Matrix\n\nAfter the view matrix transforms everything into camera space (camera at origin, world rotated and zoomed around it), the projection matrix maps that space onto the actual canvas pixels.\n\n### What It Does\n\nThe camera's `viewport` describes a logical rectangle in world units — how wide and tall the visible area is. The projection matrix scales this rectangle to fill the canvas and shifts the origin from the top-left corner to the canvas center:\n\n```\nscaleX = canvasWidth  / viewport.width\nscaleY = canvasHeight / viewport.height\n\nprojMatrix = | scaleX      0    canvasW/2 |\n             |      0   scaleY  canvasH/2 |\n             |      0       0           1 |\n```\n\n### What the Numbers Mean\n\n- A point at camera-space `(0, 0)` maps to the canvas center `(canvasW/2, canvasH/2)`.\n- A point at `(-viewport.width/2, -viewport.height/2)` maps to the top-left corner `(0, 0)`.\n\n### Viewport, Canvas, and Zoom\n\nThe viewport defines world units; the canvas size sets pixel dimensions; zoom scales the view:\n\n- Viewport `320×180` on a `640×360` canvas → `scaleX = scaleY = 2`, so each world unit is 2 pixels with no extra zoom.\n- Same setup with `zoom = 2` → objects appear 4× their pixel size (viewport zoom is applied first, then canvas scale).\n- Changing the canvas size at runtime is safe — `getProjMatrix(W, H)` takes the current dimensions each frame.\n\n### In the Engine\n\n```js\ngetProjMatrix(screenW, screenH) {\n    const scaleX = screenW / this.viewport.width;\n    const scaleY = screenH / this.viewport.height;\n    return new DOMMatrix([\n        scaleX, 0,\n        0,      scaleY,\n        screenW / 2, screenH / 2,\n    ]);\n}\n```"
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Camera in the Engine\n\nHere is how the camera concepts land in the actual graphics.js code.\n\n### The Camera Class\n\n`Camera` extends `SceneNode` — it lives in the scene graph and inherits position, angle, and parenting. You can parent it to a player node for free-following, or move it directly.\n\n```js\nconst cam = new Camera({\n    viewport: { width: 320, height: 180 },\n    zoom: 1,\n});\ncam.up = new Vector(0, -1);   // default: canvas Y-down\nscene.addNode(cam);\n\n// Attach to a Drawable:\nsprite.camera = cam;\n```\n\n### RenderLayer Key Includes Camera ID\n\nDrawables with different cameras must be grouped separately — they live in different coordinate spaces even if they share the same `zIndex`. The bucket key now includes the camera ID:\n\n```js\n_getLayerKey(drawable) {\n    return `${drawable.zIndex}:${drawable.camera?.id ?? ''}`;\n}\n```\n\n### Camera Matrix Cache\n\n`proj × view` is identical for every drawable that shares the same camera. `render()` computes it once per camera in the first pass:\n\n```js\nconst cameraMatrices = new Map();\n\nfor (const drawable of drawables) {\n    const cam = drawable.camera;\n    if (cam !== null && !cameraMatrices.has(cam.id)) {\n        cameraMatrices.set(cam.id, cam.getProjMatrix(W, H).multiply(cam.getViewMatrix()));\n    }\n}\n```\n\nOne matrix multiplication per camera per frame — not one per drawable.\n\n### _computeMatrix() — The Final Combination\n\n```js\n_computeMatrix(drawable, cameraMatrices) {\n    // ... build worldMatrix from world pos, angle, scale ...\n\n    if (drawable.camera !== null) {\n        const camMatrix = cameraMatrices.get(drawable.camera.id);\n        return camMatrix.multiply(worldMatrix);  // (proj × view) × world\n    }\n    return worldMatrix;   // camera = null → raw pixel coords\n}\n```\n\n`ctx.setTransform(matrix)` is called with this result before each `draw()` — the rest of the draw loop is unchanged from the previous lesson."
         },
         {
           "type": 2,
-          "text": "render() builds a cameraMatrices cache — one entry per Camera, not one per Drawable. What matrix does each cache entry store?",
+          "text": "After the projection matrix is applied, a point at camera-space (0, 0) ends up at which canvas coordinate?",
           "answers": [
             {
-              "text": "projMatrix × viewMatrix — the combined camera-to-screen transform, shared by all drawables using that camera",
+              "text": "(canvasWidth / 2, canvasHeight / 2) — the canvas center",
               "correct": true
             },
             {
-              "text": "viewMatrix × worldMatrix — the combined camera and object transform",
+              "text": "(0, 0) — the canvas top-left corner",
               "correct": false
             },
             {
-              "text": "projMatrix only — the view matrix is applied per-drawable",
+              "text": "(viewport.width / 2, viewport.height / 2) — the viewport center in world units",
               "correct": false
             },
             {
-              "text": "worldMatrix × projMatrix — reversed to match DOMMatrix multiplication order",
-              "correct": false
-            }
-          ]
-        },
-        {
-          "type": 2,
-          "text": "Why does _getLayerKey include the camera ID in addition to zIndex?",
-          "answers": [
-            {
-              "text": "Drawables assigned to different cameras exist in different coordinate spaces and must be kept in separate buckets",
-              "correct": true
-            },
-            {
-              "text": "The camera ID determines which order the zIndex buckets are sorted",
-              "correct": false
-            },
-            {
-              "text": "zIndex values from different cameras would otherwise collide and overwrite each other",
-              "correct": false
-            },
-            {
-              "text": "It prevents the world matrix from being computed twice for the same drawable",
-              "correct": false
-            }
-          ]
-        },
-        {
-          "type": 2,
-          "text": "In getViewMatrix(), the translation T uses -pos.x and -pos.y (negated). Why?",
-          "answers": [
-            {
-              "text": "To shift the entire world so the camera's position becomes the new origin — moving the world in the opposite direction of the camera",
-              "correct": true
-            },
-            {
-              "text": "Because DOMMatrix stores translations with opposite sign by convention",
-              "correct": false
-            },
-            {
-              "text": "To convert from screen space back to world space",
-              "correct": false
-            },
-            {
-              "text": "Because the canvas Y-axis is inverted relative to standard math coordinates",
+              "text": "(canvasWidth, canvasHeight) — the canvas bottom-right corner",
               "correct": false
             }
           ]
         },
         {
           "type": 4,
-          "text": "What is the dot product of two orthogonal unit vectors? (answer with a number)",
-          "correctAnswer": "0"
+          "text": "A camera viewport is 320 units wide and the canvas is 640 pixels wide. What is scaleX in the projection matrix? (answer with a number)",
+          "correctAnswer": "2"
+        },
+        {
+          "type": 2,
+          "text": "The camera's zoom is increased from 1 to 2 while the viewport stays the same. What is the visual effect?",
+          "answers": [
+            {
+              "text": "World objects appear twice as large — each world unit occupies twice as many pixels",
+              "correct": true
+            },
+            {
+              "text": "World objects appear half as large — zoom scales down to fit more of the world",
+              "correct": false
+            },
+            {
+              "text": "No visual change — zoom only affects the viewport dimensions, not rendering scale",
+              "correct": false
+            },
+            {
+              "text": "World objects appear four times as large — zoom is applied twice, once per axis",
+              "correct": false
+            }
+          ]
         },
         {
           "type": 5,
