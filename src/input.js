@@ -167,7 +167,7 @@ class InputManager {
             if (key !== this._getControlKey(binding.source)) continue;
 
             const sourceState = this._controlStates.get(key);
-            const isActive = sourceState?.pressed && 
+            const isActive = sourceState?.pressed &&
                 binding.required.every((controlInfo) => this._isControlPressed(controlInfo));
 
             const action = this._actions.get(binding.action);
@@ -207,6 +207,13 @@ class InputManager {
      */
     _getControlKey(controlInfo) {
         return `${controlInfo.device}:${controlInfo.control}`;
+    }
+
+    destroy() {
+        for (const device of this._devices.values()) {
+            device.destroy();
+        }
+        this._devices.clear();
     }
 }
 
@@ -261,18 +268,31 @@ class InputDevice {
     emitDeviceEvent(control, type, value) {
         this.manager.handleDeviceEvent({ device: this.name, control, type, value });
     }
+
+    destroy() {
+        this._controls.clear();
+    }
 }
 
 class KeyboardDevice extends InputDevice {
     /**
-     * 
-     * @param {InputManager} manager 
+     *
+     * @param {InputManager} manager
      */
     constructor(manager) {
         super(manager, "keyboard");
 
-        window.addEventListener("keydown", (e) => this._handleKeyboardEvent(e, "start"));
-        window.addEventListener("keyup", (e) => this._handleKeyboardEvent(e, "end"));
+        this._onKeyDown = (e) => this._handleKeyboardEvent(e, "start");
+        this._onKeyUp   = (e) => this._handleKeyboardEvent(e, "end");
+
+        window.addEventListener("keydown", this._onKeyDown);
+        window.addEventListener("keyup",   this._onKeyUp);
+    }
+
+    destroy() {
+        super.destroy();
+        window.removeEventListener("keydown", this._onKeyDown);
+        window.removeEventListener("keyup",   this._onKeyUp);
     }
 
     /**
@@ -293,9 +313,9 @@ class KeyboardDevice extends InputDevice {
 
 class PointerDevice extends InputDevice {
     /**
-     * @type {HTMLElement}
+     * @type {HTMLCanvasElement}
      */
-    element;
+    canvas;
     /**
      * @type {Map<number, InputControl>}
      */
@@ -304,20 +324,33 @@ class PointerDevice extends InputDevice {
     /**
      * 
      * @param {InputManager} manager 
-     * @param {HTMLElement} element 
+     * @param {HTMLCanvasElement} canvas 
      */
-    constructor(manager, element) {
+    constructor(manager, canvas) {
         super(manager, "pointer");
 
-        this.element = element;
+        this.canvas = canvas;
         this._pointerOwners = new Map();
 
-        this.element.style.touchAction = "none";
+        this.canvas.style.touchAction = "none";
 
-        this.element.addEventListener("pointerdown", (e) => this._handlePointerEvent(e, "start"));
-        this.element.addEventListener("pointermove", (e) => this._handlePointerEvent(e, "change"));
-        this.element.addEventListener("pointerup", (e) => this._handlePointerEvent(e, "end"));
-        this.element.addEventListener("pointercancel", (e) => this._handlePointerEvent(e, "end"));
+        this._onPointerDown   = (e) => this._handlePointerEvent(e, "start");
+        this._onPointerMove   = (e) => this._handlePointerEvent(e, "change");
+        this._onPointerUp     = (e) => this._handlePointerEvent(e, "end");
+        this._onPointerCancel = (e) => this._handlePointerEvent(e, "end");
+
+        this.canvas.addEventListener("pointerdown",   this._onPointerDown);
+        this.canvas.addEventListener("pointermove",   this._onPointerMove);
+        this.canvas.addEventListener("pointerup",     this._onPointerUp);
+        this.canvas.addEventListener("pointercancel", this._onPointerCancel);
+    }
+
+    destroy() {
+        super.destroy();
+        this.canvas.removeEventListener("pointerdown",   this._onPointerDown);
+        this.canvas.removeEventListener("pointermove",   this._onPointerMove);
+        this.canvas.removeEventListener("pointerup",     this._onPointerUp);
+        this.canvas.removeEventListener("pointercancel", this._onPointerCancel);
     }
 
     /**
@@ -326,7 +359,7 @@ class PointerDevice extends InputDevice {
      * @param {DeviceEventType} deviceEventType 
      */
     _handlePointerEvent(e, deviceEventType) {
-        const rect = this.element.getBoundingClientRect();
+        const rect = this.canvas.getBoundingClientRect();
 
         const position = new Vector(
             (e.clientX - rect.left) / rect.width,
@@ -334,7 +367,7 @@ class PointerDevice extends InputDevice {
         );
 
         if (deviceEventType === "start") {
-            this.element.setPointerCapture(e.pointerId);
+            this.canvas.setPointerCapture(e.pointerId);
         }
 
         const owner = this._pointerOwners.get(e.pointerId);
@@ -549,7 +582,7 @@ class PointerPosition extends PointerControl {
 }
 
 /**
- * @typedef {{ canvas: HTMLCanvasElement, shape?: "rect" | "circle", width?: number, height?: number, radius?: number } & PointerControlParams} ButtonParams
+ * @typedef {{ shape?: "rect" | "circle", width?: number, height?: number, radius?: number } & PointerControlParams} ButtonParams
  */
 
 /**
@@ -562,10 +595,6 @@ class PointerPosition extends PointerControl {
  * Add a ButtonDrawable as a child node to visualise it.
  */
 class Button extends PointerControl {
-    /**
-     * @type {HTMLCanvasElement}
-     */
-    canvas;
     /**
      * Hit-test shape.
      * @type {"rect" | "circle"}
@@ -598,7 +627,6 @@ class Button extends PointerControl {
      */
     constructor(pointerDevice, params = {}) {
         super(pointerDevice, params);
-        this.canvas = params.canvas;
         this.shape = params.shape ?? "rect";
         this.width = params.width ?? 0;
         this.height = params.height ?? 0;
@@ -611,8 +639,8 @@ class Button extends PointerControl {
      * @returns {boolean}
      */
     _hitTest(pos) {
-        const px = pos.x * this.canvas.width;
-        const py = pos.y * this.canvas.height;
+        const px = pos.x * this.device.canvas.width;
+        const py = pos.y * this.device.canvas.height;
         const c = this.getWorldPosition();
         const dx = px - c.x;
         const dy = py - c.y;
@@ -640,7 +668,7 @@ class Button extends PointerControl {
 }
 
 /**
- * @typedef {{ canvas: HTMLCanvasElement, radius?: number } & PointerControlParams} PointerJoystickParams
+ * @typedef {{ radius?: number } & PointerControlParams} PointerJoystickParams
  */
 
 /**
@@ -654,10 +682,6 @@ class Button extends PointerControl {
  * Add a JoystickDrawable as a child node to visualise it.
  */
 class PointerJoystick extends PointerControl {
-    /**
-     * @type {HTMLCanvasElement}
-     */
-    canvas;
     /**
      * Outer radius of the joystick zone in canvas pixels.
      * @type {number}
@@ -681,7 +705,6 @@ class PointerJoystick extends PointerControl {
      */
     constructor(pointerDevice, params = {}) {
         super(pointerDevice, params);
-        this.canvas = params.canvas;
         this.radius = params.radius ?? 60;
         this.pressed = false;
         this.action = new Vector(0, 0);
@@ -692,7 +715,7 @@ class PointerJoystick extends PointerControl {
      * @returns {Vector}    Position in canvas pixels.
      */
     _toPixels(pos) {
-        return new Vector(pos.x * this.canvas.width, pos.y * this.canvas.height);
+        return new Vector(pos.x * this.device.canvas.width, pos.y * this.device.canvas.height);
     }
 
     /**
@@ -748,5 +771,73 @@ class PointerJoystick extends PointerControl {
         this.pressed = false;
         this.action.set(0, 0);
         this.emitDeviceEvent("end", this.action.clone());
+    }
+}
+
+/**
+ * @typedef {{ up?: string, down?: string, left?: string, right?: string }} KeyboardDPadParams
+ */
+
+class KeyboardDPad extends InputControl {
+    /**
+     * 
+     * @param {KeyboardDevice} keyboardDevice 
+     * @param {KeyboardDPadParams} params 
+     */
+    constructor(keyboardDevice, params = {}) {
+        super(keyboardDevice);
+
+        const {
+            up = "KeyW",
+            down = "KeyS",
+            left = "KeyA",
+            right = "KeyD"
+        } = params;
+
+        this.keyMap = {
+            [up]: "up",
+            [down]: "down",
+            [left]: "left",
+            [right]: "right"
+        };
+
+        this.vec = new Vector(0, 0);
+
+        this.states = {
+            up: false,
+            down: false,
+            left: false,
+            right: false
+        };
+    }
+
+    /**
+     * 
+     * @param {string} code 
+     * @param {boolean} down 
+     */
+    handleKey(code, down) {
+        const direction = this.keyMap[code];
+
+        if (!direction) return;
+
+        const wasMoving = this.vec.x !== 0 || this.vec.y !== 0;
+
+        this.states[direction] = down;
+
+        this.vec.x = (this.states.right ? 1 : 0) - (this.states.left ? 1 : 0);
+        this.vec.y = (this.states.down ? 1 : 0) - (this.states.up ? 1 : 0);
+
+        const isMoving = this.vec.x !== 0 || this.vec.y !== 0;
+
+        if (!wasMoving && isMoving) {
+            this.emitDeviceEvent("start", this.vec.clone());
+        }
+
+        this.emitDeviceEvent("change", this.vec.clone());
+
+        if (wasMoving && !isMoving) {
+            this.emitDeviceEvent("end", this.vec.clone());
+        }
     }
 }

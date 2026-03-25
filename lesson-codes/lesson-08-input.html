@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 8 — Input | Build a 2D Engine</title>
+  <style>
+    :root {
+      --bg: #0f0f1e; --panel: #181828; --border: #2a2a45;
+      --accent: #4cc9f0; --green: #4ade80; --pink: #f72585;
+      --yellow: #fbbf24; --purple: #a78bfa; --orange: #fb923c;
+      --text: #cdd6f4; --muted: #6b7280;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Consolas', 'Courier New', monospace; padding: 24px; }
+    header { margin-bottom: 20px; }
+    header h1 { color: var(--accent); font-size: 1.3rem; margin-bottom: 4px; }
+    header p  { color: var(--muted); font-size: 0.82rem; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+    .tab { padding: 7px 14px; background: var(--panel); border: 1px solid var(--border); color: var(--muted); cursor: pointer; border-radius: 5px; font-family: inherit; font-size: 0.8rem; transition: border-color 0.15s, color 0.15s; }
+    .tab:hover  { color: var(--text); border-color: var(--accent); }
+    .tab.active { color: var(--accent); border-color: var(--accent); background: #141428; }
+    .demo-area { display: flex; gap: 14px; align-items: flex-start; }
+    .canvas-col { display: flex; flex-direction: column; flex-shrink: 0; }
+    canvas { border: 1px solid var(--border); border-radius: 6px; background: #08080f; display: block; width: 100%; max-width: 560px; height: auto; }
+    .info { width: 260px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 16px; min-height: 420px; }
+    .info h3 { color: var(--accent); font-size: 0.85rem; margin-bottom: 10px; }
+    .info p   { color: var(--muted); font-size: 0.78rem; line-height: 1.65; margin-bottom: 10px; }
+    .val-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 0.76rem; }
+    .val-row:last-of-type { border-bottom: none; }
+    .val-label { color: var(--muted); }
+    .val-num          { color: var(--green);  font-weight: bold; }
+    .val-num.yellow   { color: var(--yellow); }
+    .val-num.accent   { color: var(--accent); }
+    .val-num.pink     { color: var(--pink);   }
+    .code-block { margin-top: 10px; background: #08080f; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 4px; padding: 10px 12px; font-size: 0.71rem; color: #a5b4fc; line-height: 1.7; white-space: pre; overflow-x: auto; }
+    .ctrl-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 0 2px; gap: 8px; max-width: 560px; }
+    .dpad { display: grid; grid-template-columns: repeat(3, 38px); grid-template-rows: repeat(3, 38px); gap: 2px; }
+    .btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border); border-radius: 6px; font-size: 15px; width: 38px; height: 38px; cursor: pointer; display: flex; align-items: center; justify-content: center; user-select: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; font-family: inherit; transition: background 0.06s, color 0.06s; }
+    .btn.held, .btn:active { background: #252542; color: var(--text); border-color: var(--accent); }
+    .ctrl-hint { flex: 1; text-align: center; color: var(--muted); font-size: 0.72rem; line-height: 1.7; }
+    .log-box { background: #08080f; border: 1px solid var(--border); border-radius: 4px; padding: 8px; font-size: 0.69rem; color: #a5b4fc; height: 90px; overflow-y: auto; line-height: 1.85; white-space: pre; }
+    .section-label { font-size: 0.72rem; color: var(--muted); margin: 8px 0 4px; }
+    #btn-fire { width: 52px; height: 52px; border-radius: 50%; border-color: var(--pink); color: var(--pink); background: rgba(247,37,133,0.1); font-size: 0.65rem; }
+    #btn-fire.held { background: rgba(247,37,133,0.3); border-color: var(--pink); }
+    @media (max-width: 740px) {
+      body { padding: 12px; }
+      .demo-area { flex-direction: column; }
+      .info { width: 100%; min-height: auto; }
+      .tab { padding: 6px 10px; font-size: 0.75rem; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>Lesson 8 — Input</h1>
+    <p>Two demos: <strong>Action Bindings</strong> (InputManager maps device events to named actions) and <strong>Canvas Controls</strong> (on-screen joystick &amp; button via PointerJoystick / Button).</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="setDemo(0)">1. Action Bindings</button>
+    <button class="tab"        onclick="setDemo(1)">2. Canvas Controls</button>
+  </div>
+
+  <div class="demo-area">
+    <div class="canvas-col">
+      <canvas id="canvas" width="560" height="420"></canvas>
+
+      <!-- Controls for Demo 0 -->
+      <div class="ctrl-bar" id="ctrl-bar-0">
+        <div class="dpad">
+          <div></div>
+          <button class="btn" id="btn-u" aria-label="Up">↑</button>
+          <div></div>
+          <button class="btn" id="btn-l" aria-label="Left">←</button>
+          <div></div>
+          <button class="btn" id="btn-r" aria-label="Right">→</button>
+          <div></div>
+          <button class="btn" id="btn-d" aria-label="Down">↓</button>
+          <div></div>
+        </div>
+        <div class="ctrl-hint">
+          WASD / arrows — move<br>Space / FIRE — shoot
+        </div>
+        <button class="btn" id="btn-fire" aria-label="Fire">FIRE</button>
+      </div>
+
+      <!-- Controls for Demo 1 -->
+      <div class="ctrl-bar" id="ctrl-bar-1" style="display:none">
+        <div class="ctrl-hint" style="text-align:left; padding-left:4px;">
+          Touch joystick or FIRE button on canvas&nbsp;&nbsp;·&nbsp;&nbsp;Desktop: WASD + Space
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 0: Action Bindings -->
+    <div class="info" id="panel-0">
+      <h3>Action Bindings</h3>
+      <p>InputManager translates raw device events into named <strong>actions</strong>. Multiple devices can bind to the same action.</p>
+      <div class="val-row"><span class="val-label">move.x</span><span class="val-num accent" id="a-mx">0.00</span></div>
+      <div class="val-row"><span class="val-label">move.y</span><span class="val-num accent" id="a-my">0.00</span></div>
+      <div class="val-row"><span class="val-label">fire</span><span class="val-num pink" id="a-fire">—</span></div>
+      <p class="section-label">Action event log:</p>
+      <div class="log-box" id="action-log"></div>
+      <div class="code-block">input.addBinding('move', {
+  device: 'keyboard',
+  control: 'dpad',
+});
+input.onAction('move', 'start',
+  v => log(v));
+input.onAction('move', 'change',
+  v => log(v));
+input.onAction('move', 'end',
+  () => log('—'));</div>
+    </div>
+
+    <!-- Panel 1: Canvas Controls -->
+    <div class="info" id="panel-1" style="display:none">
+      <h3>Canvas Controls</h3>
+      <p>PointerJoystick and Button are InputControls drawn on the canvas. They claim pointer events by hit-testing in screen-pixel space.</p>
+      <div class="val-row"><span class="val-label">joystick.x</span><span class="val-num accent" id="j-x">0.00</span></div>
+      <div class="val-row"><span class="val-label">joystick.y</span><span class="val-num accent" id="j-y">0.00</span></div>
+      <div class="val-row"><span class="val-label">joystick active</span><span class="val-num" id="j-p">false</span></div>
+      <div class="val-row"><span class="val-label">button pressed</span><span class="val-num pink" id="b-p">false</span></div>
+      <div class="code-block">// Screen-space position (px)
+const js = new PointerJoystick(
+  ptrDev, { radius: 55 });
+js.position.set(85, 335);
+
+const btn = new Button(ptrDev, {
+  shape: 'circle', radius: 35 });
+btn.position.set(475, 335);
+
+// Visualise with custom drawables
+scene.addNode(new JoystickDraw(js));
+scene.addNode(new ButtonDraw(btn));</div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // Vector
+    // =========================================================================
+    class Vector {
+      constructor(x = 0, y = 0) { this.x = x; this.y = y; }
+      static zero()         { return new Vector(0, 0); }
+      static one()          { return new Vector(1, 1); }
+      static from(v)        { return new Vector(v.x, v.y); }
+      static fromAngle(rad) { return new Vector(Math.cos(rad), Math.sin(rad)); }
+      set(x, y)   { this.x = x; this.y = y; return this; }
+      copy(v)     { this.x = v.x; this.y = v.y; return this; }
+      clone()     { return new Vector(this.x, this.y); }
+      add(v)      { this.x += v.x; this.y += v.y; return this; }
+      sub(v)      { this.x -= v.x; this.y -= v.y; return this; }
+      mul(v)      { this.x *= v.x; this.y *= v.y; return this; }
+      div(v)      { this.x /= v.x; this.y /= v.y; return this; }
+      scale(s)    { this.x *= s;   this.y *= s;   return this; }
+      negate()    { this.x = -this.x; this.y = -this.y; return this; }
+      normalize() { const l = this.length(); if (l > 0) { this.x /= l; this.y /= l; } return this; }
+      rotate(rad) { const c = Math.cos(rad), s = Math.sin(rad), nx = this.x * c - this.y * s; this.y = this.x * s + this.y * c; this.x = nx; return this; }
+      lerp(v, t)  { this.x += (v.x - this.x) * t; this.y += (v.y - this.y) * t; return this; }
+      length()    { return Math.sqrt(this.x * this.x + this.y * this.y); }
+      dot(v)      { return this.x * v.x + this.y * v.y; }
+      distance(v) { const dx = this.x - v.x, dy = this.y - v.y; return Math.sqrt(dx * dx + dy * dy); }
+      angle()     { return Math.atan2(this.y, this.x); }
+      toString()  { return `Vector(${this.x.toFixed(2)}, ${this.y.toFixed(2)})`; }
+    }
+
+    // =========================================================================
+    // SceneNode
+    // =========================================================================
+    class SceneNode {
+      static _nextId = 0;
+      constructor() {
+        this.id = SceneNode._nextId++;
+        this.name = `node_${this.id}`;
+        this.scene = null;
+        this.position = Vector.zero();
+        this.angle = 0;
+        this.scale = Vector.one();
+        this.parent = null;
+        this._listeners = new Map();
+      }
+      setParent(node, keep = false) {
+        if (keep) {
+          const wp = this.getWorldPosition(), wa = this.getWorldAngle(), ws = this.getWorldScale();
+          this.parent = node;
+          this.setWorldPosition(wp); this.setWorldAngle(wa); this.setWorldScale(ws);
+        } else { this.parent = node; }
+      }
+      getWorldPosition() {
+        if (!this.parent) return this.position.clone();
+        const p = this.parent.getWorldPosition(), pa = this.parent.getWorldAngle(), ps = this.parent.getWorldScale();
+        return p.add(this.position.clone().mul(ps).rotate(pa));
+      }
+      setWorldPosition(w) {
+        if (!this.parent) { this.position.set(w.x, w.y); return; }
+        const p = this.parent.getWorldPosition(), pa = this.parent.getWorldAngle(), ps = this.parent.getWorldScale();
+        this.position.copy(w.sub(p).rotate(-pa).div(ps));
+      }
+      getWorldAngle()   { return this.parent ? this.parent.getWorldAngle() + this.angle : this.angle; }
+      setWorldAngle(wa) { this.angle = this.parent ? wa - this.parent.getWorldAngle() : wa; }
+      getWorldScale()   { return this.parent ? this.parent.getWorldScale().mul(this.scale) : this.scale.clone(); }
+      setWorldScale(ws) { this.scale.copy(this.parent ? ws.clone().div(this.parent.getWorldScale()) : ws.clone()); }
+      on(type, handler)   { if (!this._listeners.has(type)) this._listeners.set(type, new Set()); this._listeners.get(type).add(handler); }
+      once(type, handler) { const w = e => { this.off(type, w); handler(e); }; this.on(type, w); }
+      off(type, handler)  { this._listeners.get(type)?.delete(handler); }
+      emit(type, data)    { const ls = this._listeners.get(type); if (!ls) return; const ev = { type, data, target: this }; for (const h of [...ls]) h(ev); }
+      start()    {}
+      update(dt) {}
+      destroy()  { this._listeners.clear(); }
+    }
+
+    // =========================================================================
+    // Scene
+    // =========================================================================
+    class Scene {
+      constructor() { this.nodes = []; this.pending = []; this.pendingRemoval = []; this.running = false; }
+      addNode(node) {
+        node.scene = this;
+        if (this.running) { this.pending.push(node); }
+        else { this.nodes.push(node); node.start(); }
+      }
+      removeNode(node) {
+        const pi = this.pending.indexOf(node);
+        if (pi !== -1) { this.pending.splice(pi, 1); node.destroy(); node.scene = null; return; }
+        if (this.running) { this.pendingRemoval.push(node); }
+        else { const i = this.nodes.indexOf(node); if (i !== -1) { this.nodes.splice(i, 1); node.destroy(); node.scene = null; } }
+      }
+      findNode(name)     { return this.nodes.find(n => n.name === name) ?? null; }
+      findNodesByType(T) { return this.nodes.filter(n => n instanceof T); }
+      start()    { this.running = true; }
+      update(dt) {
+        if (this.pendingRemoval.length > 0) {
+          for (const n of this.pendingRemoval) { const i = this.nodes.indexOf(n); if (i !== -1) this.nodes.splice(i, 1); n.destroy(); n.scene = null; }
+          this.pendingRemoval = [];
+        }
+        if (this.pending.length > 0) {
+          for (const n of this.pending) { this.nodes.push(n); n.start(); }
+          this.pending = [];
+        }
+        for (const n of this.nodes) n.update(dt);
+      }
+      destroy() {
+        for (const n of [...this.nodes, ...this.pending]) { n.destroy(); n.scene = null; }
+        this.nodes = []; this.pending = []; this.pendingRemoval = [];
+        this.running = false;
+      }
+    }
+
+    // =========================================================================
+    // SceneManager
+    // =========================================================================
+    class SceneManager {
+      constructor() { this.registry = new Map(); this.currentScene = null; }
+      register(name, init) { this.registry.set(name, init); }
+      update(dt) { if (this.currentScene) this.currentScene.update(dt); }
+      switchScene(name, params = {}) {
+        const init = this.registry.get(name);
+        if (!init) throw new Error(`SceneManager: Unknown scene "${name}"`);
+        if (this.currentScene) this.currentScene.destroy();
+        const scene = new Scene();
+        init(scene, params);
+        scene.start();
+        this.currentScene = scene;
+      }
+    }
+
+    // =========================================================================
+    // Drawable
+    // =========================================================================
+    class Drawable extends SceneNode {
+      constructor(params = {}) { super(); this.zIndex = params.zIndex ?? 0; this.camera = params.camera ?? null; }
+      draw(ctx) {}
+    }
+
+    // =========================================================================
+    // RectDrawable
+    // =========================================================================
+    class RectDrawable extends Drawable {
+      constructor(params = {}) {
+        super(params);
+        this.width       = params.width       ?? 40;
+        this.height      = params.height      ?? 40;
+        this.fillColor   = params.fillColor   ?? null;
+        this.strokeColor = params.strokeColor ?? null;
+        this.lineWidth   = params.lineWidth   ?? 1;
+      }
+      draw(ctx) {
+        ctx.beginPath();
+        ctx.rect(-this.width / 2, -this.height / 2, this.width, this.height);
+        if (this.fillColor   !== null) { ctx.fillStyle   = this.fillColor;   ctx.fill(); }
+        if (this.strokeColor !== null) { ctx.strokeStyle = this.strokeColor; ctx.lineWidth = this.lineWidth; ctx.stroke(); }
+      }
+    }
+
+    // =========================================================================
+    // Camera
+    // =========================================================================
+    class Camera extends SceneNode {
+      constructor(params) {
+        super();
+        this.viewport = params.viewport;
+        this.zoom     = params.zoom ?? 1;
+        this.up       = new Vector(0, -1);
+        this._canvas  = params.canvas ?? null;
+      }
+      getViewMatrix() {
+        const pos   = this.getWorldPosition();
+        const up    = new Vector(-this.up.x, -this.up.y);
+        const right = new Vector(up.y, -up.x);
+        const T = new DOMMatrix([1, 0, 0, 1, -pos.x, -pos.y]);
+        const R = new DOMMatrix([right.x, up.x, right.y, up.y, 0, 0]);
+        const Z = new DOMMatrix([this.zoom, 0, 0, this.zoom, 0, 0]);
+        return Z.multiply(R).multiply(T);
+      }
+      getProjMatrix(screenW, screenH) {
+        const scaleX = screenW / this.viewport.width;
+        const scaleY = screenH / this.viewport.height;
+        return new DOMMatrix([scaleX, 0, 0, scaleY, screenW / 2, screenH / 2]);
+      }
+      screenToWorld(normX, normY) {
+        const W = this._canvas ? this._canvas.width  : this.viewport.width;
+        const H = this._canvas ? this._canvas.height : this.viewport.height;
+        const pv = this.getProjMatrix(W, H).multiply(this.getViewMatrix());
+        pv.invertSelf();
+        const pt = pv.transformPoint({ x: normX * W, y: normY * H });
+        return new Vector(pt.x, pt.y);
+      }
+    }
+
+    // =========================================================================
+    // Renderer
+    // =========================================================================
+    class Renderer {
+      constructor(canvas) { this.canvas = canvas; this.ctx = canvas.getContext('2d'); this.clearColor = '#000000'; }
+      render(drawables) {
+        if (this.clearColor !== null) { this.ctx.fillStyle = this.clearColor; this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height); }
+        const layers = new Map();
+        const cameraMatrices = new Map();
+        const W = this.canvas.width, H = this.canvas.height;
+        for (const d of drawables) {
+          const key = this._getLayerKey(d);
+          if (!layers.has(key)) layers.set(key, { zIndex: d.zIndex, drawables: [] });
+          layers.get(key).drawables.push(d);
+          if (d.camera !== null && !cameraMatrices.has(d.camera.id)) {
+            cameraMatrices.set(d.camera.id, d.camera.getProjMatrix(W, H).multiply(d.camera.getViewMatrix()));
+          }
+        }
+        for (const layer of [...layers.values()].sort((a, b) => a.zIndex - b.zIndex)) {
+          for (const d of layer.drawables) { this.ctx.setTransform(this._computeMatrix(d, cameraMatrices)); d.draw(this.ctx); }
+        }
+        this.ctx.resetTransform();
+      }
+      _computeMatrix(d, cameraMatrices) {
+        const pos = d.getWorldPosition(), angle = d.getWorldAngle(), scale = d.getWorldScale();
+        const cos = Math.cos(angle), sin = Math.sin(angle);
+        const world = new DOMMatrix([scale.x * cos, scale.x * sin, -scale.y * sin, scale.y * cos, pos.x, pos.y]);
+        return d.camera !== null ? cameraMatrices.get(d.camera.id).multiply(world) : world;
+      }
+      _getLayerKey(d) { return `${d.zIndex}:${d.camera?.id ?? ''}`; }
+    }
+
+    // =========================================================================
+    // InputManager
+    // =========================================================================
+    class InputManager {
+      constructor(config = {}) {
+        this._controlStates    = new Map();
+        this._controlToBindings = new Map();
+        this._actions          = new Map();
+        this._actionListeners  = new Map();
+        this._devices          = new Map();
+        if (config.keyboard) this._addDevice(new KeyboardDevice(this));
+        if (config.pointer)  this._addDevice(new PointerDevice(this, config.pointer));
+      }
+      _addDevice(device) { this._devices.set(device.name, device); }
+      getDevice(name)    { return this._devices.get(name); }
+      onAction(action, type, listener) {
+        const key = `${action}:${type}`;
+        if (!this._actionListeners.has(key)) this._actionListeners.set(key, new Set());
+        this._actionListeners.get(key).add(listener);
+      }
+      offAction(action, type, listener) { this._actionListeners.get(`${action}:${type}`)?.delete(listener); }
+      _emitAction(action, type, value) {
+        const listeners = this._actionListeners.get(`${action}:${type}`);
+        if (!listeners) return;
+        for (const listener of listeners) listener(value);
+      }
+      addBinding(action, source, required = []) {
+        const binding  = { action, source, required };
+        const controls = [...required, source];
+        if (!this._actions.has(action)) this._actions.set(action, { active: false });
+        for (const info of controls) {
+          const key = this._getControlKey(info);
+          if (!this._controlToBindings.has(key)) this._controlToBindings.set(key, []);
+          this._controlToBindings.get(key).push(binding);
+        }
+      }
+      handleDeviceEvent(event) {
+        const key = this._getControlKey(event);
+        if (!this._controlStates.has(key)) this._controlStates.set(key, { pressed: false });
+        const state = this._controlStates.get(key);
+        switch (event.type) {
+          case 'start':  state.pressed = true;  state.value = event.value; break;
+          case 'change': state.value = event.value; break;
+          case 'end':    state.pressed = false; break;
+        }
+        const bindings = this._controlToBindings.get(key);
+        if (!bindings) return;
+        for (const binding of bindings) {
+          if (key !== this._getControlKey(binding.source)) continue;
+          const sourceState = this._controlStates.get(key);
+          const isActive = sourceState?.pressed &&
+            binding.required.every(ci => this._isControlPressed(ci));
+          const action = this._actions.get(binding.action);
+          if (!action) continue;
+          const wasActive = action.active;
+          action.active = isActive;
+          if (isActive) action.value = sourceState?.value;
+          if (!wasActive && isActive)       this._emitAction(binding.action, 'start',  action.value);
+          else if (wasActive && isActive)   this._emitAction(binding.action, 'change', action.value);
+          else if (wasActive && !isActive)  this._emitAction(binding.action, 'end');
+        }
+      }
+      _isControlPressed(ci) { return this._controlStates.get(this._getControlKey(ci))?.pressed === true; }
+      _getControlKey(ci)    { return `${ci.device}:${ci.control}`; }
+      destroy() { for (const d of this._devices.values()) d.destroy(); this._devices.clear(); }
+    }
+
+    // =========================================================================
+    // InputDevice
+    // =========================================================================
+    class InputDevice {
+      constructor(manager, name) { this.manager = manager; this.name = name; this._controls = new Set(); }
+      registerControl(control)   { this._controls.add(control); }
+      unregisterControl(control) { this._controls.delete(control); }
+      emitDeviceEvent(control, type, value) { this.manager.handleDeviceEvent({ device: this.name, control, type, value }); }
+      destroy() { this._controls.clear(); }
+    }
+
+    // =========================================================================
+    // KeyboardDevice
+    // =========================================================================
+    class KeyboardDevice extends InputDevice {
+      constructor(manager) {
+        super(manager, 'keyboard');
+        this._onKeyDown = e => this._handle(e, 'start');
+        this._onKeyUp   = e => this._handle(e, 'end');
+        window.addEventListener('keydown', this._onKeyDown);
+        window.addEventListener('keyup',   this._onKeyUp);
+      }
+      destroy() {
+        super.destroy();
+        window.removeEventListener('keydown', this._onKeyDown);
+        window.removeEventListener('keyup',   this._onKeyUp);
+      }
+      _handle(e, type) {
+        if (e.repeat) return;
+        this.emitDeviceEvent(e.code, type, null);
+        for (const c of this._controls) c.handleKey(e.code, type === 'start');
+      }
+    }
+
+    // =========================================================================
+    // PointerDevice
+    // =========================================================================
+    class PointerDevice extends InputDevice {
+      constructor(manager, canvas) {
+        super(manager, 'pointer');
+        this.canvas = canvas;
+        this._pointerOwners = new Map();
+        this.canvas.style.touchAction = 'none';
+        this._onPointerDown   = e => this._handle(e, 'start');
+        this._onPointerMove   = e => this._handle(e, 'change');
+        this._onPointerUp     = e => this._handle(e, 'end');
+        this._onPointerCancel = e => this._handle(e, 'end');
+        this.canvas.addEventListener('pointerdown',   this._onPointerDown);
+        this.canvas.addEventListener('pointermove',   this._onPointerMove);
+        this.canvas.addEventListener('pointerup',     this._onPointerUp);
+        this.canvas.addEventListener('pointercancel', this._onPointerCancel);
+      }
+      destroy() {
+        super.destroy();
+        this.canvas.removeEventListener('pointerdown',   this._onPointerDown);
+        this.canvas.removeEventListener('pointermove',   this._onPointerMove);
+        this.canvas.removeEventListener('pointerup',     this._onPointerUp);
+        this.canvas.removeEventListener('pointercancel', this._onPointerCancel);
+      }
+      _handle(e, type) {
+        const rect = this.canvas.getBoundingClientRect();
+        const pos  = new Vector(
+          (e.clientX - rect.left) / rect.width,
+          (e.clientY - rect.top)  / rect.height
+        );
+        if (type === 'start') this.canvas.setPointerCapture(e.pointerId);
+        const owner = this._pointerOwners.get(e.pointerId);
+        if (type !== 'start') {
+          if (owner) {
+            owner.handlePointer(type, e.pointerId, pos);
+            if (type === 'end') this._pointerOwners.delete(e.pointerId);
+          }
+          return;
+        }
+        const sorted = [...this._controls].sort((a, b) => b.priority - a.priority);
+        for (const c of sorted) {
+          if (c.handlePointer('start', e.pointerId, pos)) {
+            this._pointerOwners.set(e.pointerId, c);
+            break;
+          }
+        }
+      }
+    }
+
+    // =========================================================================
+    // InputControl
+    // =========================================================================
+    class InputControl extends SceneNode {
+      constructor(device) { super(); this.device = device; }
+      start()   { this.device.registerControl(this); }
+      destroy() { super.destroy(); this.device.unregisterControl(this); }
+      emitDeviceEvent(type, value) { this.device.emitDeviceEvent(this.name, type, value); }
+      handlePointer(type, id, pos) { return false; }
+      handleKey(code, down) {}
+    }
+
+    // =========================================================================
+    // PointerControl
+    // =========================================================================
+    class PointerControl extends InputControl {
+      constructor(device, params = {}) {
+        super(device);
+        this.priority  = params.priority ?? 0;
+        this.pointerId = null;
+      }
+      handlePointer(type, id, pos) {
+        if (type === 'start') {
+          if (this.pointerId !== null) return false;
+          const claimed = this.onPointerStart(pos);
+          if (claimed) this.pointerId = id;
+          return claimed;
+        }
+        if (this.pointerId !== id) return false;
+        if (type === 'change') this.onPointerMove(pos);
+        if (type === 'end')    { this.onPointerEnd(); this.pointerId = null; }
+        return true;
+      }
+      onPointerStart(pos) { return false; }
+      onPointerMove(pos)  {}
+      onPointerEnd()      {}
+    }
+
+    // =========================================================================
+    // PointerPosition
+    // =========================================================================
+    class PointerPosition extends PointerControl {
+      constructor(device, params = {}) {
+        super(device, params);
+        this.posVector = new Vector(0, 0);
+        this.camera    = params.camera ?? null;
+      }
+      _toWorld(pos) { return this.camera ? this.camera.screenToWorld(pos.x, pos.y) : pos; }
+      onPointerStart(pos) {
+        this.posVector.copy(this._toWorld(pos));
+        this.emitDeviceEvent('start',  this.posVector);
+        this.emitDeviceEvent('change', this.posVector);
+        return true;
+      }
+      onPointerMove(pos) { this.posVector.copy(this._toWorld(pos)); this.emitDeviceEvent('change', this.posVector); }
+      onPointerEnd()     { this.emitDeviceEvent('end'); }
+    }
+
+    // =========================================================================
+    // Button
+    // =========================================================================
+    class Button extends PointerControl {
+      constructor(device, params = {}) {
+        super(device, params);
+        this.shape   = params.shape   ?? 'rect';
+        this.width   = params.width   ?? 0;
+        this.height  = params.height  ?? 0;
+        this.radius  = params.radius  ?? 0;
+        this.pressed = false;
+      }
+      _hitTest(pos) {
+        const px = pos.x * this.device.canvas.width;
+        const py = pos.y * this.device.canvas.height;
+        const c  = this.getWorldPosition();
+        const dx = px - c.x, dy = py - c.y;
+        if (this.shape === 'circle') return dx * dx + dy * dy <= this.radius * this.radius;
+        return Math.abs(dx) <= this.width / 2 && Math.abs(dy) <= this.height / 2;
+      }
+      onPointerStart(pos) {
+        if (!this._hitTest(pos)) return false;
+        this.pressed = true;
+        this.emitDeviceEvent('start', true);
+        return true;
+      }
+      onPointerEnd() { this.pressed = false; this.emitDeviceEvent('end', false); }
+    }
+
+    // =========================================================================
+    // PointerJoystick
+    // =========================================================================
+    class PointerJoystick extends PointerControl {
+      constructor(device, params = {}) {
+        super(device, params);
+        this.radius  = params.radius ?? 60;
+        this.pressed = false;
+        this.action  = new Vector(0, 0);
+      }
+      _toPixels(pos) { return new Vector(pos.x * this.device.canvas.width, pos.y * this.device.canvas.height); }
+      _hitTest(pos)  {
+        const px = this._toPixels(pos);
+        const c  = this.getWorldPosition();
+        const dx = px.x - c.x, dy = px.y - c.y;
+        return dx * dx + dy * dy <= this.radius * this.radius;
+      }
+      _updateAction(pixelPos) {
+        const c  = this.getWorldPosition();
+        const dx = pixelPos.x - c.x, dy = pixelPos.y - c.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 0) {
+          const t = Math.min(len, this.radius) / this.radius;
+          this.action.set((dx / len) * t, (dy / len) * t);
+        } else { this.action.set(0, 0); }
+      }
+      onPointerStart(pos) {
+        if (!this._hitTest(pos)) return false;
+        this.pressed = true;
+        this._updateAction(this._toPixels(pos));
+        this.emitDeviceEvent('start', this.action.clone());
+        return true;
+      }
+      onPointerMove(pos) { this._updateAction(this._toPixels(pos)); this.emitDeviceEvent('change', this.action.clone()); }
+      onPointerEnd()     { this.pressed = false; this.action.set(0, 0); this.emitDeviceEvent('end', this.action.clone()); }
+    }
+
+    // =========================================================================
+    // KeyboardDPad
+    // =========================================================================
+    class KeyboardDPad extends InputControl {
+      constructor(device, params = {}) {
+        super(device);
+        const { up = 'KeyW', down = 'KeyS', left = 'KeyA', right = 'KeyD' } = params;
+        this.keyMap = { [up]: 'up', [down]: 'down', [left]: 'left', [right]: 'right' };
+        // Also support arrow keys
+        this.keyMap['ArrowUp']    = 'up';
+        this.keyMap['ArrowDown']  = 'down';
+        this.keyMap['ArrowLeft']  = 'left';
+        this.keyMap['ArrowRight'] = 'right';
+        this.vec    = new Vector(0, 0);
+        this.states = { up: false, down: false, left: false, right: false };
+      }
+      handleKey(code, down) {
+        const dir = this.keyMap[code];
+        if (!dir) return;
+        const wasMoving = this.vec.x !== 0 || this.vec.y !== 0;
+        this.states[dir] = down;
+        this.vec.x = (this.states.right ? 1 : 0) - (this.states.left ? 1 : 0);
+        this.vec.y = (this.states.down  ? 1 : 0) - (this.states.up   ? 1 : 0);
+        const isMoving = this.vec.x !== 0 || this.vec.y !== 0;
+        if (!wasMoving && isMoving)  this.emitDeviceEvent('start',  this.vec.clone());
+        this.emitDeviceEvent('change', this.vec.clone());
+        if (wasMoving  && !isMoving) this.emitDeviceEvent('end',    this.vec.clone());
+      }
+    }
+
+    // =========================================================================
+    // JoystickDraw — visualises a PointerJoystick (no ctx.save/restore)
+    // =========================================================================
+    class JoystickDraw extends Drawable {
+      constructor(joystick, params = {}) {
+        super({ zIndex: params.zIndex ?? 10 });
+        this._js = joystick;
+        // Position mirrors the joystick's position (screen space, camera: null)
+      }
+      start() {
+        super.start();
+        this.position.copy(this._js.position);
+      }
+      draw(ctx) {
+        const r  = this._js.radius;
+        const nr = 18;
+        // Outer ring
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fillStyle   = 'rgba(255,255,255,0.04)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        ctx.lineWidth   = 2;
+        ctx.stroke();
+        // Nub
+        const nx = this._js.action.x * (r - nr);
+        const ny = this._js.action.y * (r - nr);
+        ctx.beginPath();
+        ctx.arc(nx, ny, nr, 0, Math.PI * 2);
+        ctx.fillStyle   = this._js.pressed ? 'rgba(76,201,240,0.75)' : 'rgba(255,255,255,0.35)';
+        ctx.fill();
+        ctx.strokeStyle = this._js.pressed ? '#4cc9f0' : 'rgba(255,255,255,0.25)';
+        ctx.lineWidth   = 1.5;
+        ctx.stroke();
+      }
+    }
+
+    // =========================================================================
+    // ButtonDraw — visualises a Button (no ctx.save/restore)
+    // =========================================================================
+    class ButtonDraw extends Drawable {
+      constructor(button, params = {}) {
+        super({ zIndex: params.zIndex ?? 10 });
+        this._btn   = button;
+        this._label = params.label ?? 'FIRE';
+      }
+      start() {
+        super.start();
+        this.position.copy(this._btn.position);
+      }
+      draw(ctx) {
+        const r = this._btn.radius || 35;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fillStyle   = this._btn.pressed ? 'rgba(247,37,133,0.6)' : 'rgba(247,37,133,0.18)';
+        ctx.fill();
+        ctx.strokeStyle = this._btn.pressed ? '#f72585' : 'rgba(247,37,133,0.45)';
+        ctx.lineWidth   = 2;
+        ctx.stroke();
+        ctx.font         = 'bold 12px Consolas, monospace';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle    = this._btn.pressed ? '#fff' : 'rgba(255,255,255,0.6)';
+        ctx.fillText(this._label, 0, 0);
+      }
+    }
+
+    // =========================================================================
+    // TrailDraw — world-space trail points, rendered without save/restore
+    // =========================================================================
+    class TrailDraw extends Drawable {
+      constructor(cam) {
+        super({ zIndex: 1, camera: cam });
+        this._points = [];
+      }
+      addPoint(x, y) {
+        this._points.push({ x, y, t: 1.0 });
+        if (this._points.length > 14) this._points.shift();
+      }
+      update(dt) {
+        for (const p of this._points) p.t -= dt * 2.5;
+        this._points = this._points.filter(p => p.t > 0);
+      }
+      // This drawable lives at world (0,0) so draw coords = world coords
+      draw(ctx) {
+        for (const p of this._points) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 3 * p.t, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(76,201,240,${p.t * 0.35})`;
+          ctx.fill();
+        }
+      }
+    }
+
+    // =========================================================================
+    // Player
+    // =========================================================================
+    class Player extends Drawable {
+      constructor(cam, dpad, joystick, button, trail) {
+        super({ zIndex: 2, camera: cam });
+        this._dpad     = dpad;
+        this._joystick = joystick;
+        this._button   = button;
+        this._trail    = trail;
+        this.speed     = 200;
+        this._facing   = -Math.PI / 2;
+        this._flash    = 0;
+        this._trailAccum = 0;
+      }
+      update(dt) {
+        // Movement: joystick takes priority over keyboard dpad
+        let mx = 0, my = 0;
+        if (this._joystick && this._joystick.pressed) {
+          mx = this._joystick.action.x;
+          my = this._joystick.action.y;
+        } else if (this._dpad) {
+          mx = this._dpad.vec.x;
+          my = this._dpad.vec.y;
+          const dl = Math.sqrt(mx * mx + my * my);
+          if (dl > 1) { mx /= dl; my /= dl; }
+        }
+
+        this.position.x += mx * this.speed * dt;
+        this.position.y += my * this.speed * dt;
+
+        const moving = Math.abs(mx) > 0.05 || Math.abs(my) > 0.05;
+        if (moving) this._facing = Math.atan2(my, mx);
+        this.angle = this._facing;
+
+        // Wrap around edges
+        const hw = 272, hh = 204;
+        if (this.position.x >  hw) this.position.x -= hw * 2;
+        if (this.position.x < -hw) this.position.x += hw * 2;
+        if (this.position.y >  hh) this.position.y -= hh * 2;
+        if (this.position.y < -hh) this.position.y += hh * 2;
+
+        // Fire flash
+        const firing = fireActive || (this._button?.pressed ?? false);
+        this._flash  = firing
+          ? Math.min(1, this._flash + dt * 12)
+          : Math.max(0, this._flash - dt * 6);
+
+        // Trail (throttled)
+        if (this._trail && moving) {
+          this._trailAccum += dt;
+          if (this._trailAccum >= 0.04) {
+            this._trail.addPoint(this.position.x, this.position.y);
+            this._trailAccum = 0;
+          }
+        }
+      }
+      draw(ctx) {
+        const f = this._flash;
+        // Engine glow (behind body)
+        if (f > 0.05 || true) {
+          ctx.beginPath();
+          ctx.arc(-9, 0, 5 + f * 4, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(251,127,0,${0.25 + f * 0.75})`;
+          ctx.fill();
+        }
+        // Ship body
+        ctx.beginPath();
+        ctx.moveTo(16,  0);
+        ctx.lineTo(-10, -8);
+        ctx.lineTo(-10,  8);
+        ctx.closePath();
+        ctx.fillStyle   = `rgba(76,201,240,${0.55 + 0.45 * f})`;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+        ctx.lineWidth   = 1;
+        ctx.stroke();
+        // Fire ring
+        if (f > 0.04) {
+          ctx.beginPath();
+          ctx.arc(0, 0, 22 + f * 14, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(247,37,133,${f * 0.65})`;
+          ctx.lineWidth   = 2;
+          ctx.stroke();
+        }
+      }
+    }
+
+    // =========================================================================
+    // Setup
+    // =========================================================================
+    const canvas   = document.getElementById('canvas');
+    const renderer = new Renderer(canvas);
+    renderer.clearColor = '#08080f';
+
+    const input  = new InputManager({ keyboard: true, pointer: canvas });
+    const keyDev = input.getDevice('keyboard');
+    const ptrDev = input.getDevice('pointer');
+
+    canvas.addEventListener('wheel', e => e.preventDefault(), { passive: false });
+
+    // Prevent page scroll from HTML D-pad buttons
+    window.addEventListener('keydown', e => {
+      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+    });
+
+    // Action bindings — set up once globally
+    // 'move' bound to keyboard dpad control (name assigned when creating control)
+    input.addBinding('move', { device: 'keyboard', control: 'dpad' });
+    // 'fire' bound to Space key and canvas button
+    input.addBinding('fire', { device: 'keyboard', control: 'Space' });
+    input.addBinding('fire', { device: 'pointer',  control: 'fire-btn' });
+
+    // Action state
+    let fireActive = false;
+    const logLines = [];
+
+    function addLog(line) {
+      logLines.unshift(line);
+      if (logLines.length > 8) logLines.pop();
+      const el = document.getElementById('action-log');
+      if (el) el.textContent = logLines.join('\n');
+    }
+
+    input.onAction('move', 'start',  v => addLog(`move  start  (${v.x.toFixed(1)}, ${v.y.toFixed(1)})`));
+    input.onAction('move', 'change', v => { /* update display only, no log spam */ });
+    input.onAction('move', 'end',    () => addLog('move  end'));
+    input.onAction('fire', 'start',  () => { fireActive = true;  addLog('fire  start'); });
+    input.onAction('fire', 'end',    () => { fireActive = false; addLog('fire  end'); });
+
+    // HTML button → synthetic keyboard events (Demo 0 D-pad)
+    function simKey(code, down) {
+      window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code, bubbles: true }));
+    }
+    function bindHTMLBtn(id, code) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const on  = () => { simKey(code, true);  el.classList.add('held'); };
+      const off = () => { simKey(code, false); el.classList.remove('held'); };
+      el.addEventListener('pointerdown',   on);
+      el.addEventListener('pointerup',     off);
+      el.addEventListener('pointercancel', off);
+      el.addEventListener('pointerleave',  off);
+    }
+    bindHTMLBtn('btn-u',    'KeyW');
+    bindHTMLBtn('btn-d',    'KeyS');
+    bindHTMLBtn('btn-l',    'KeyA');
+    bindHTMLBtn('btn-r',    'KeyD');
+    bindHTMLBtn('btn-fire', 'Space');
+
+    // Shared references for HUD update
+    let activeDpad     = null;
+    let activeJoystick = null;
+    let activeButton   = null;
+
+    // =========================================================================
+    // Scene helpers
+    // =========================================================================
+    function buildGrid(scene, cam) {
+      for (let x = -560; x <= 560; x += 80) {
+        const g = new RectDrawable({ width: 1, height: 1400, fillColor: '#12122a', zIndex: -2, camera: cam });
+        g.position.set(x, 0);
+        scene.addNode(g);
+      }
+      for (let y = -420; y <= 420; y += 80) {
+        const g = new RectDrawable({ width: 1400, height: 1, fillColor: '#12122a', zIndex: -2, camera: cam });
+        g.position.set(0, y);
+        scene.addNode(g);
+      }
+      // Axis marks
+      const ox = new RectDrawable({ width: 6, height: 6, fillColor: '#2a2a55', zIndex: -1, camera: cam });
+      scene.addNode(ox);
+    }
+
+    // =========================================================================
+    // Scene 0 — Action Bindings
+    // =========================================================================
+    const sm = new SceneManager();
+
+    sm.register('bindings', scene => {
+      const cam = new Camera({ viewport: { width: 560, height: 420 }, zoom: 1 });
+      scene.addNode(cam);
+      buildGrid(scene, cam);
+
+      const dpad = new KeyboardDPad(keyDev);
+      dpad.name  = 'dpad';
+      activeDpad = dpad;
+      scene.addNode(dpad);
+
+      const trail = new TrailDraw(cam);
+      scene.addNode(trail);
+
+      const player = new Player(cam, dpad, null, null, trail);
+      scene.addNode(player);
+
+      // Decorative coloured boxes to navigate to
+      const landmarks = [
+        { x: -180, y: -120, c: '#e94560' },
+        { x:  180, y: -120, c: '#11a070' },
+        { x: -180, y:  120, c: '#e9a020' },
+        { x:  180, y:  120, c: '#5030b0' },
+        { x:    0, y: -190, c: '#4cc9f0' },
+        { x:    0, y:  190, c: '#d040c0' },
+      ];
+      for (const lm of landmarks) {
+        const box = new RectDrawable({ width: 30, height: 30, fillColor: lm.c, strokeColor: 'rgba(255,255,255,0.1)', lineWidth: 1, zIndex: 0, camera: cam });
+        box.position.set(lm.x, lm.y);
+        scene.addNode(box);
+      }
+    });
+
+    // =========================================================================
+    // Scene 1 — Canvas Controls
+    // =========================================================================
+    sm.register('canvas-controls', scene => {
+      const cam = new Camera({ viewport: { width: 560, height: 420 }, zoom: 1, canvas });
+      scene.addNode(cam);
+      buildGrid(scene, cam);
+
+      // Keyboard dpad fallback
+      const dpad = new KeyboardDPad(keyDev);
+      dpad.name  = 'dpad';
+      activeDpad = dpad;
+      scene.addNode(dpad);
+
+      // On-canvas joystick (bottom-left, screen-pixel space, camera: null)
+      const joystick = new PointerJoystick(ptrDev, { radius: 55, priority: 1 });
+      joystick.name    = 'joystick';
+      joystick.position.set(85, 335);
+      activeJoystick   = joystick;
+      scene.addNode(joystick);
+
+      const jsDraw = new JoystickDraw(joystick);
+      scene.addNode(jsDraw);
+
+      // On-canvas fire button (bottom-right, screen-pixel space, camera: null)
+      const fireBtn = new Button(ptrDev, { shape: 'circle', radius: 35, priority: 1 });
+      fireBtn.name    = 'fire-btn';
+      fireBtn.position.set(475, 335);
+      activeButton    = fireBtn;
+      scene.addNode(fireBtn);
+
+      const btnDraw = new ButtonDraw(fireBtn, { label: 'FIRE' });
+      scene.addNode(btnDraw);
+
+      const trail = new TrailDraw(cam);
+      scene.addNode(trail);
+
+      const player = new Player(cam, dpad, joystick, fireBtn, trail);
+      scene.addNode(player);
+
+      // Landmarks
+      const landmarks = [
+        { x: -180, y: -100, c: '#e94560' }, { x:  180, y: -100, c: '#11a070' },
+        { x: -180, y:  80,  c: '#e9a020' }, { x:  180, y:  80,  c: '#5030b0' },
+      ];
+      for (const lm of landmarks) {
+        const box = new RectDrawable({ width: 28, height: 28, fillColor: lm.c, strokeColor: 'rgba(255,255,255,0.1)', lineWidth: 1, zIndex: 0, camera: cam });
+        box.position.set(lm.x, lm.y);
+        scene.addNode(box);
+      }
+    });
+
+    // =========================================================================
+    // Demo switching
+    // =========================================================================
+    function setDemo(i) {
+      document.querySelectorAll('.tab').forEach((t, idx) => t.classList.toggle('active', idx === i));
+      document.querySelectorAll('.info').forEach((p, idx) => p.style.display = idx === i ? '' : 'none');
+      document.getElementById('ctrl-bar-0').style.display = i === 0 ? '' : 'none';
+      document.getElementById('ctrl-bar-1').style.display = i === 1 ? '' : 'none';
+      // Reset log and state
+      logLines.length = 0;
+      const logEl = document.getElementById('action-log');
+      if (logEl) logEl.textContent = '';
+      fireActive     = false;
+      activeDpad     = null;
+      activeJoystick = null;
+      activeButton   = null;
+      sm.switchScene(i === 0 ? 'bindings' : 'canvas-controls');
+    }
+
+    sm.switchScene('bindings');
+
+    // =========================================================================
+    // Main loop
+    // =========================================================================
+    let lastTime = 0;
+
+    function loop(ts) {
+      const dt = Math.min((ts - lastTime) / 1000, 0.05);
+      lastTime = ts;
+
+      sm.update(dt);
+      renderer.render(sm.currentScene.findNodesByType(Drawable));
+
+      // HUD — Panel 0
+      if (activeDpad) {
+        document.getElementById('a-mx').textContent = activeDpad.vec.x.toFixed(2);
+        document.getElementById('a-my').textContent = activeDpad.vec.y.toFixed(2);
+      }
+      document.getElementById('a-fire').textContent = fireActive ? 'active' : '—';
+
+      // HUD — Panel 1
+      if (activeJoystick) {
+        document.getElementById('j-x').textContent = activeJoystick.action.x.toFixed(2);
+        document.getElementById('j-y').textContent = activeJoystick.action.y.toFixed(2);
+        document.getElementById('j-p').textContent = String(activeJoystick.pressed);
+      }
+      if (activeButton) {
+        document.getElementById('b-p').textContent = String(activeButton.pressed);
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+  </script>
+
+</body>
+</html>
