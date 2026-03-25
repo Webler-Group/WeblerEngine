@@ -475,6 +475,12 @@ class Animator extends SceneNode {
  * larger), values < 1 zoom out. Zoom is applied in view space before
  * projection, so it is independent of the viewport size.
  *
+ * All matrices are rebuilt once per frame in `update()` and cached. The
+ * projection matrix is computed in normalised screen space (1×1); the
+ * Renderer prepends a screen-scale transform to convert to canvas pixels.
+ * Use `getViewMatrix()`, `getProjMatrix()`, and `getProjViewMatrix()` to
+ * read the cached results at zero cost.
+ *
  * Typical setup:
  *   const camera = new Camera({ viewport: { width: 320, height: 180 } });
  *   scene.addNode(camera);
@@ -487,16 +493,17 @@ class Camera extends SceneNode {
      *
      * Defaults to `(0, -1)`, which matches canvas convention (Y increases
      * downward). Set to `(0, 1)` for a Y-up world. The vector does not need to
-     * be normalized — it is re-normalized internally by `getViewMatrix()`.
+     * be normalized — it is re-normalized internally by `update()`.
      * @type {Vector}
      */
     up;
     /**
      * The logical size of the camera's view in world units.
      *
-     * `getProjMatrix()` maps this rectangle to the full canvas. A viewport of
-     * `{ width: 320, height: 180 }` on a 640×360 canvas produces a ×2 pixel
-     * scale with no extra zoom applied.
+     * `getProjMatrix()` maps this rectangle to normalised screen space (1×1).
+     * The Renderer scales to actual pixels via a screen-space transform.
+     * A viewport of `{ width: 320, height: 180 }` on a 640×360 canvas
+     * produces a ×2 pixel scale with no extra zoom applied.
      * @type {Viewport}
      */
     viewport;
@@ -509,6 +516,28 @@ class Camera extends SceneNode {
      */
     zoom;
 
+    /** 
+     * @type {DOMMatrix} 
+     */
+    _view;
+    /** 
+     * @type {DOMMatrix} 
+     */
+    _proj;
+    /** 
+     * @type {DOMMatrix} 
+     */
+    _projView;
+    /**
+     * @type {DOMMatrix}
+     */
+    _invProjView;
+    /**
+     * Scratch matrix reused each frame for T, R, Z — never read outside update().
+     * @type {DOMMatrix}
+     */
+    _temp;
+
     /**
      * @param {CameraParams} params
      */
@@ -518,68 +547,282 @@ class Camera extends SceneNode {
         this.viewport = params.viewport;
         this.zoom = params.zoom ?? 1;
         this.up = new Vector(0, -1);
+
+        this._view = new DOMMatrix();
+        this._proj = new DOMMatrix();
+        this._projView = new DOMMatrix();
+        this._invProjView = new DOMMatrix();
+        this._temp = new DOMMatrix();
     }
 
     /**
-     * Returns the view matrix for this camera.
+     * Rebuilds all cached matrices. Called automatically every frame via
+     * `update()`. Projection is computed in normalised 1×1 screen space;
+     * multiply by a screen-scale matrix ([W,0,0,H,0,0]) to get pixel coords.
      *
-     * The view matrix transforms world-space coordinates into camera space:
-     * it translates the world so the camera position is at the origin, rotates
-     * it to align the camera's `up` direction with screen-up, and then scales
-     * uniformly by `zoom`.
-     *
-     * The full per-drawable transform applied by Renderer is:
-     *   projMatrix × viewMatrix × worldMatrix
-     *
-     * @returns {DOMMatrix}
+     * @param {number} dt
      */
-    getViewMatrix() {
+    update(dt) {
         const pos = this.getWorldPosition();
         const up = new Vector(-this.up.x, -this.up.y);
         const right = new Vector(up.y, -up.x);
 
-        const T = new DOMMatrix([
-            1, 0,
-            0, 1,
-            -pos.x, -pos.y
-        ]);
+        const z = this.zoom;
+        matIdentity(this._view)
+            .multiplySelf(setMatrix(this._temp, z, 0, 0, z, 0, 0))
+            .multiplySelf(setMatrix(this._temp, right.x, up.x, right.y, up.y, 0, 0))
+            .multiplySelf(setMatrix(this._temp, 1, 0, 0, 1, -pos.x, -pos.y));
 
-        const R = new DOMMatrix([
-            right.x, up.x,
-            right.y, up.y,
-            0, 0
-        ]);
+        const scaleX = 1 / this.viewport.width;
+        const scaleY = 1 / this.viewport.height;
+        this._proj.a = scaleX; this._proj.b = 0;
+        this._proj.c = 0;      this._proj.d = scaleY;
+        this._proj.e = 0.5;    this._proj.f = 0.5;
 
-        const Z = new DOMMatrix([
-            this.zoom, 0,
-            0, this.zoom,
-            0, 0
-        ]);
+        matIdentity(this._projView).multiplySelf(this._proj).multiplySelf(this._view);
+        matIdentity(this._invProjView).multiplySelf(this._projView).invertSelf();
+    }
 
-        return Z.multiply(R).multiply(T);
+    /** @returns {DOMMatrix} Cached view matrix (world → camera space). */
+    getViewMatrix() { return this._view; }
+
+    /**
+     * Cached projection matrix (camera space → normalised 1×1 screen space).
+     * Multiply by a screen-scale matrix ([W,0,0,H,0,0]) to get pixel coords.
+     * @returns {DOMMatrix}
+     */
+    getProjMatrix() { return this._proj; }
+
+    /**
+     * Cached combined proj × view matrix (world → normalised screen space).
+     * @returns {DOMMatrix}
+     */
+    getProjViewMatrix() { return this._projView; }
+
+    /**
+     * Converts a normalised screen position to a world-space position.
+     *
+     * Normalised coords map the canvas to [0, 1] on both axes (top-left is
+     * (0, 0), bottom-right is (1, 1)). Convert from pixels first:
+     *   normX = pixelX / canvas.width
+     *   normY = pixelY / canvas.height
+     *
+     * Uses the cached inverse of (proj × view) — free after `update()` runs.
+     *
+     * @param {number} normX  X in normalised screen space [0, 1].
+     * @param {number} normY  Y in normalised screen space [0, 1].
+     * @returns {Vector}
+     */
+    screenToWorld(normX, normY) {
+        const pt = this._invProjView.transformPoint({ x: normX, y: normY });
+        return new Vector(pt.x, pt.y);
+    }
+}
+
+/**
+ * @typedef {{
+ *   button: Button,
+ *   fillColor?: string | null,
+ *   pressedFillColor?: string | null,
+ *   strokeColor?: string | null,
+ *   lineWidth?: number,
+ *   text?: string | null,
+ *   textColor?: string | null,
+ *   font?: string | null
+ * } & DrawableParams} ButtonDrawableParams
+ */
+
+/**
+ * A Drawable that renders a Button control's hit area.
+ *
+ * Add this as a child of the Button node so it inherits the button's world
+ * position. The shape (rect or circle) and dimensions are read directly from
+ * the Button, so they always stay in sync.
+ *
+ * fillColor and pressedFillColor are swapped automatically based on
+ * button.pressed — no extra update logic needed.
+ */
+class ButtonDrawable extends Drawable {
+    /**
+     * @type {Button}
+     */
+    button;
+    /**
+     * Fill color when the button is not pressed.
+     * @type {string | null}
+     */
+    fillColor;
+    /**
+     * Fill color when the button is pressed.
+     * @type {string | null}
+     */
+    pressedFillColor;
+    /**
+     * @type {string | null}
+     */
+    strokeColor;
+    /**
+     * @type {number}
+     */
+    lineWidth;
+    /**
+     * Label drawn centered on the button. Set to null for no text.
+     * @type {string | null}
+     */
+    text;
+    /**
+     * CSS color for the label.
+     * @type {string | null}
+     */
+    textColor;
+    /**
+     * CSS font string for the label (e.g. "bold 14px sans-serif").
+     * @type {string | null}
+     */
+    font;
+
+    /**
+     * @param {ButtonDrawableParams} params
+     */
+    constructor(params) {
+        super(params);
+        this.button = params.button;
+        this.fillColor = params.fillColor ?? "rgba(255,255,255,0.25)";
+        this.pressedFillColor = params.pressedFillColor ?? "rgba(255,255,255,0.55)";
+        this.strokeColor = params.strokeColor ?? "rgba(255,255,255,0.7)";
+        this.lineWidth = params.lineWidth ?? 2;
+        this.text = params.text ?? null;
+        this.textColor = params.textColor ?? "rgba(255,255,255,0.9)";
+        this.font = params.font ?? "bold 14px sans-serif";
     }
 
     /**
-     * Returns a projection matrix that maps camera space into canvas pixel
-     * space, placing the camera origin at the center of the canvas.
-     *
-     * Scale factors are derived from the viewport-to-canvas ratio:
-     *   scaleX = screenW / viewport.width
-     *   scaleY = screenH / viewport.height
-     *
-     * @param {number} screenW  Canvas width in pixels.
-     * @param {number} screenH  Canvas height in pixels.
-     * @returns {DOMMatrix}
+     * @param {CanvasRenderingContext2D} ctx
      */
-    getProjMatrix(screenW, screenH) {
-        const scaleX = screenW / this.viewport.width;
-        const scaleY = screenH / this.viewport.height;
+    draw(ctx) {
+        const fill = this.button.pressed ? this.pressedFillColor : this.fillColor;
+        ctx.beginPath();
+        if (this.button.shape === "circle") {
+            ctx.arc(0, 0, this.button.radius, 0, Math.PI * 2);
+        } else {
+            ctx.rect(
+                -this.button.width / 2, -this.button.height / 2,
+                this.button.width, this.button.height
+            );
+        }
+        if (fill !== null) {
+            ctx.fillStyle = fill;
+            ctx.fill();
+        }
+        if (this.strokeColor !== null) {
+            ctx.strokeStyle = this.strokeColor;
+            ctx.lineWidth = this.lineWidth;
+            ctx.stroke();
+        }
+        if (this.text !== null && this.textColor !== null) {
+            ctx.font = this.font;
+            ctx.fillStyle = this.textColor;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(this.text, 0, 0);
+        }
+    }
+}
 
-        return new DOMMatrix([
-            scaleX, 0,
-            0, scaleY,
-            screenW / 2, screenH / 2,
-        ]);
+/**
+ * @typedef {{
+ *   joystick: PointerJoystick,
+ *   stickRadius?: number,
+ *   baseColor?: string | null,
+ *   stickColor?: string | null,
+ *   strokeColor?: string | null,
+ *   lineWidth?: number
+ * } & DrawableParams} JoystickDrawableParams
+ */
+
+/**
+ * A Drawable that renders a PointerJoystick control.
+ *
+ * Add this as a child of the PointerJoystick node so it inherits the
+ * joystick's world position. The outer base circle uses joystick.radius.
+ * The inner stick is offset by joystick.action scaled to the outer radius,
+ * updating automatically each frame as action changes.
+ */
+class JoystickDrawable extends Drawable {
+    /**
+     * @type {PointerJoystick}
+     */
+    joystick;
+    /**
+     * Radius of the inner stick knob in canvas pixels.
+     * @type {number}
+     */
+    stickRadius;
+    /**
+     * Fill color for the outer base ring.
+     * @type {string | null}
+     */
+    baseColor;
+    /**
+     * Fill color for the inner stick knob.
+     * @type {string | null}
+     */
+    stickColor;
+    /**
+     * @type {string | null}
+     */
+    strokeColor;
+    /**
+     * @type {number}
+     */
+    lineWidth;
+
+    /**
+     * @param {JoystickDrawableParams} params
+     */
+    constructor(params) {
+        super(params);
+        this.joystick = params.joystick;
+        this.stickRadius = params.stickRadius ?? 20;
+        this.baseColor = params.baseColor ?? "rgba(255,255,255,0.12)";
+        this.stickColor = params.stickColor ?? "rgba(255,255,255,0.45)";
+        this.strokeColor = params.strokeColor ?? "rgba(255,255,255,0.35)";
+        this.lineWidth = params.lineWidth ?? 2;
+    }
+
+    /**
+     * @param {CanvasRenderingContext2D} ctx
+     */
+    draw(ctx) {
+        const r = this.joystick.radius;
+
+        // Outer base
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        if (this.baseColor !== null) {
+            ctx.fillStyle = this.baseColor;
+            ctx.fill();
+        }
+        if (this.strokeColor !== null) {
+            ctx.strokeStyle = this.strokeColor;
+            ctx.lineWidth = this.lineWidth;
+            ctx.stroke();
+        }
+
+        // Inner stick knob offset by action
+        const sx = this.joystick.action.x * r;
+        const sy = this.joystick.action.y * r;
+        ctx.beginPath();
+        ctx.arc(sx, sy, this.stickRadius, 0, Math.PI * 2);
+        if (this.stickColor !== null) {
+            ctx.fillStyle = this.stickColor;
+            ctx.fill();
+        }
+        if (this.strokeColor !== null) {
+            ctx.strokeStyle = this.strokeColor;
+            ctx.lineWidth = this.lineWidth;
+            ctx.stroke();
+        }
     }
 }
 
@@ -617,6 +860,12 @@ class Renderer {
      * @type {string | null}
      */
     clearColor;
+    /**
+     * Reused each frame to map normalised camera space (1×1) to canvas pixels.
+     * Updated at the start of render() whenever canvas dimensions change.
+     * @type {DOMMatrix}
+     */
+    _screenMatrix;
 
     /**
      * @param {HTMLCanvasElement} canvas
@@ -625,6 +874,7 @@ class Renderer {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
         this.clearColor = '#000000';
+        this._screenMatrix = new DOMMatrix();
     }
 
     /**
@@ -644,14 +894,15 @@ class Renderer {
         }
 
         // Group drawables by zIndex so we can sort layers without a full sort
-        // of the entire drawables array. Build the per-camera matrix cache in
-        // the same pass to avoid a second iteration.
+        // of the entire drawables array.
         /** @type {Map<string, RenderLayer>} */
         const layers = new Map();
         /** @type {Map<string, DOMMatrix>} */
         const cameraMatrices = new Map();
         const W = this.canvas.width;
         const H = this.canvas.height;
+        // Maps normalised camera space (1×1) to canvas pixels.
+        setMatrix(this._screenMatrix, W, 0, 0, H, 0, 0);
 
         for (const drawable of drawables) {
             const key = this._getLayerKey(drawable);
@@ -664,7 +915,7 @@ class Renderer {
             if (cam !== null) {
                 const camKey = cam.id;
                 if (!cameraMatrices.has(camKey)) {
-                    cameraMatrices.set(camKey, cam.getProjMatrix(W, H).multiply(cam.getViewMatrix()));
+                    cameraMatrices.set(camKey, this._screenMatrix.multiply(cam.getProjViewMatrix()));
                 }
             }
         }
@@ -690,6 +941,7 @@ class Renderer {
      *   | 0  0  1 |   |      0        0   1 |
      *
      * @param {Drawable} drawable
+     * @param {Map<string, DOMMatrix>} cameraMatrices
      * @returns {DOMMatrix}
      */
     _computeMatrix(drawable, cameraMatrices) {

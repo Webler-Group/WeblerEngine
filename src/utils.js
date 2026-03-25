@@ -228,3 +228,35 @@ const loadImage = (url) => {
         img.onerror = () => reject("Failed to load image: " + url);
     });
 };
+
+/**
+ * Resets a DOMMatrix to the 2D identity in place and returns it.
+ *
+ * @param {DOMMatrix} m
+ * @returns {DOMMatrix}
+ */
+const matIdentity = (m) => {
+    m.a = 1; m.b = 0;
+    m.c = 0; m.d = 1;
+    m.e = 0; m.f = 0;
+    return m;
+}
+
+/**
+ * Sets all six 2D components of a DOMMatrix in place and returns it.
+ *
+ * @param {DOMMatrix} m
+ * @param {number} a
+ * @param {number} b
+ * @param {number} c
+ * @param {number} d
+ * @param {number} e
+ * @param {number} f
+ * @returns {DOMMatrix}
+ */
+const setMatrix = (m, a, b, c, d, e, f) => {
+    m.a = a; m.b = b;
+    m.c = c; m.d = d;
+    m.e = e; m.f = f;
+    return m;
+}

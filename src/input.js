@@ -293,7 +293,7 @@ class KeyboardDevice extends InputDevice {
 
 class PointerDevice extends InputDevice {
     /**
-     * @type {HTMLCanvasElement}
+     * @type {HTMLElement}
      */
     element;
     /**
@@ -304,7 +304,7 @@ class PointerDevice extends InputDevice {
     /**
      * 
      * @param {InputManager} manager 
-     * @param {HTMLCanvasElement} element 
+     * @param {HTMLElement} element 
      */
     constructor(manager, element) {
         super(manager, "pointer");
@@ -329,8 +329,8 @@ class PointerDevice extends InputDevice {
         const rect = this.element.getBoundingClientRect();
 
         const position = new Vector(
-            (e.clientX - rect.left) / rect.width * this.element.width,
-            (e.clientY - rect.top) / rect.height * this.element.height
+            (e.clientX - rect.left) / rect.width,
+            (e.clientY - rect.top) / rect.height
         );
 
         if (deviceEventType === "start") {
@@ -447,12 +447,12 @@ class PointerControl extends InputControl {
      * @param {Vector} position 
      * @returns {boolean}
      */
-    handlePointer(eventType, id, position) {
+    handlePointer(eventType, id, pos) {
 
         if (eventType === "start") {
             if (this.pointerId !== null) return false;
 
-            const claimed = this.onPointerStart(position);
+            const claimed = this.onPointerStart(pos);
             if (claimed) {
                 this.pointerId = id;
             }
@@ -462,7 +462,7 @@ class PointerControl extends InputControl {
         if (this.pointerId !== id) return false;
 
         if (eventType === "change") {
-            this.onPointerMove(position);
+            this.onPointerMove(pos);
         }
 
         if (eventType === "end") {
@@ -475,10 +475,10 @@ class PointerControl extends InputControl {
 
     /**
      * 
-     * @param {Vector} position 
+     * @param {Vector} pos 
      * @returns {boolean}
      */
-    onPointerStart(position) {
+    onPointerStart(pos) {
         return false;
     }
 
@@ -489,4 +489,264 @@ class PointerControl extends InputControl {
     onPointerMove(position) { }
 
     onPointerEnd() { }
+}
+
+/**
+ * @typedef {{ camera?: Camera | null } & PointerControlParams} PointerPositionParams
+ */
+
+class PointerPosition extends PointerControl {
+    /**
+     * @type {Vector}
+     */
+    posVector;
+    /**
+     * @type {Camera | null}
+     */
+    camera;
+
+    /**
+     * @param {PointerDevice} pointerDevice
+     * @param {PointerPositionParams} params
+     */
+    constructor(pointerDevice, params = {}) {
+        super(pointerDevice, params);
+
+        this.posVector = new Vector(0, 0);
+        this.camera = params.camera ?? null;
+    }
+
+    /**
+     * @param {Vector} pos
+     * @returns {Vector}
+     */
+    _toWorld(pos) {
+        return this.camera ? this.camera.screenToWorld(pos.x, pos.y) : pos;
+    }
+
+    /**
+     * @param {Vector} pos
+     * @returns {boolean}
+     */
+    onPointerStart(pos) {
+        this.posVector.copy(this._toWorld(pos));
+        this.emitDeviceEvent("start", this.posVector);
+        this.emitDeviceEvent("change", this.posVector);
+        return true;
+    }
+
+    /**
+     * @param {Vector} pos
+     */
+    onPointerMove(pos) {
+        this.posVector.copy(this._toWorld(pos));
+        this.emitDeviceEvent("change", this.posVector);
+    }
+
+    onPointerEnd() {
+        this.emitDeviceEvent("end");
+    }
+}
+
+/**
+ * @typedef {{ canvas: HTMLCanvasElement, shape?: "rect" | "circle", width?: number, height?: number, radius?: number } & PointerControlParams} ButtonParams
+ */
+
+/**
+ * A PointerControl that represents a pressable button in screen space.
+ *
+ * The button is centered at the node's world position (in canvas pixels).
+ * Shape can be "rect" (default) or "circle". Hit-testing converts the
+ * normalised pointer position to canvas pixels before comparing.
+ *
+ * Add a ButtonDrawable as a child node to visualise it.
+ */
+class Button extends PointerControl {
+    /**
+     * @type {HTMLCanvasElement}
+     */
+    canvas;
+    /**
+     * Hit-test shape.
+     * @type {"rect" | "circle"}
+     */
+    shape;
+    /**
+     * Width in canvas pixels (rect only).
+     * @type {number}
+     */
+    width;
+    /**
+     * Height in canvas pixels (rect only).
+     * @type {number}
+     */
+    height;
+    /**
+     * Radius in canvas pixels (circle only).
+     * @type {number}
+     */
+    radius;
+    /**
+     * True while the button is held down.
+     * @type {boolean}
+     */
+    pressed;
+
+    /**
+     * @param {PointerDevice} pointerDevice
+     * @param {ButtonParams} params
+     */
+    constructor(pointerDevice, params = {}) {
+        super(pointerDevice, params);
+        this.canvas = params.canvas;
+        this.shape = params.shape ?? "rect";
+        this.width = params.width ?? 0;
+        this.height = params.height ?? 0;
+        this.radius = params.radius ?? 0;
+        this.pressed = false;
+    }
+
+    /**
+     * @param {Vector} pos  Normalised pointer position (0–1).
+     * @returns {boolean}
+     */
+    _hitTest(pos) {
+        const px = pos.x * this.canvas.width;
+        const py = pos.y * this.canvas.height;
+        const c = this.getWorldPosition();
+        const dx = px - c.x;
+        const dy = py - c.y;
+        if (this.shape === "circle") {
+            return dx * dx + dy * dy <= this.radius * this.radius;
+        }
+        return Math.abs(dx) <= this.width / 2 && Math.abs(dy) <= this.height / 2;
+    }
+
+    /**
+     * @param {Vector} pos
+     * @returns {boolean}
+     */
+    onPointerStart(pos) {
+        if (!this._hitTest(pos)) return false;
+        this.pressed = true;
+        this.emitDeviceEvent("start", true);
+        return true;
+    }
+
+    onPointerEnd() {
+        this.pressed = false;
+        this.emitDeviceEvent("end", false);
+    }
+}
+
+/**
+ * @typedef {{ canvas: HTMLCanvasElement, radius?: number } & PointerControlParams} PointerJoystickParams
+ */
+
+/**
+ * A PointerControl that acts as a virtual joystick in screen space.
+ *
+ * The joystick zone is a circle centered at the node's world position (canvas
+ * pixels). When a pointer lands inside the zone, the joystick becomes active.
+ * The stick offset from the center is clamped to `radius` and normalised to
+ * produce the `action` vector.
+ *
+ * Add a JoystickDrawable as a child node to visualise it.
+ */
+class PointerJoystick extends PointerControl {
+    /**
+     * @type {HTMLCanvasElement}
+     */
+    canvas;
+    /**
+     * Outer radius of the joystick zone in canvas pixels.
+     * @type {number}
+     */
+    radius;
+    /**
+     * True while a pointer is active on this joystick.
+     * @type {boolean}
+     */
+    pressed;
+    /**
+     * Normalised direction vector in the range [-1, 1] on each axis.
+     * Zero vector when the joystick is not active.
+     * @type {Vector}
+     */
+    action;
+
+    /**
+     * @param {PointerDevice} pointerDevice
+     * @param {PointerJoystickParams} params
+     */
+    constructor(pointerDevice, params = {}) {
+        super(pointerDevice, params);
+        this.canvas = params.canvas;
+        this.radius = params.radius ?? 60;
+        this.pressed = false;
+        this.action = new Vector(0, 0);
+    }
+
+    /**
+     * @param {Vector} pos  Normalised pointer position (0–1).
+     * @returns {Vector}    Position in canvas pixels.
+     */
+    _toPixels(pos) {
+        return new Vector(pos.x * this.canvas.width, pos.y * this.canvas.height);
+    }
+
+    /**
+     * @param {Vector} pos
+     * @returns {boolean}
+     */
+    _hitTest(pos) {
+        const px = this._toPixels(pos);
+        const c = this.getWorldPosition();
+        const dx = px.x - c.x;
+        const dy = px.y - c.y;
+        return dx * dx + dy * dy <= this.radius * this.radius;
+    }
+
+    /**
+     * Updates `action` from the current pointer pixel position.
+     * @param {Vector} pixelPos
+     */
+    _updateAction(pixelPos) {
+        const c = this.getWorldPosition();
+        const dx = pixelPos.x - c.x;
+        const dy = pixelPos.y - c.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 0) {
+            const t = Math.min(len, this.radius) / this.radius;
+            this.action.set((dx / len) * t, (dy / len) * t);
+        } else {
+            this.action.set(0, 0);
+        }
+    }
+
+    /**
+     * @param {Vector} pos
+     * @returns {boolean}
+     */
+    onPointerStart(pos) {
+        if (!this._hitTest(pos)) return false;
+        this.pressed = true;
+        this._updateAction(this._toPixels(pos));
+        this.emitDeviceEvent("start", this.action.clone());
+        return true;
+    }
+
+    /**
+     * @param {Vector} pos
+     */
+    onPointerMove(pos) {
+        this._updateAction(this._toPixels(pos));
+        this.emitDeviceEvent("change", this.action.clone());
+    }
+
+    onPointerEnd() {
+        this.pressed = false;
+        this.action.set(0, 0);
+        this.emitDeviceEvent("end", this.action.clone());
+    }
 }
