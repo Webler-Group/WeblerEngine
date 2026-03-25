@@ -15,7 +15,11 @@
  */
 
 /**
- * @typedef {{ type: DeviceEventType, data: any } & ControlInfo} DeviceEvent
+ * @typedef {{ type: DeviceEventType, value: any } & ControlInfo} DeviceEvent
+ */
+
+/**
+ * @typedef {(value: any) => void} ActionListener
  */
 
 class InputManager {
@@ -28,14 +32,84 @@ class InputManager {
      */
     _controlToBindings;
     /**
-     * TODO
+     * @type {Map<string, { active: boolean, value: any }>}
      */
     _actions;
+    /**
+     * @type {Map<string, Set<ActionListener>>}
+     */
+    _actionListeners;
+    /**
+     * @type {Map<string, InputDevice>}
+     */
+    _devices;
 
-    constructor() {
+    /**
+     * @param {{ keyboard?: boolean, pointer?: HTMLCanvasElement }} config
+     */
+    constructor(config = {}) {
         this._controlStates = new Map();
         this._controlToBindings = new Map();
         this._actions = new Map();
+        this._actionListeners = new Map();
+        this._devices = new Map();
+
+        if (config.keyboard) {
+            this._addDevice(new KeyboardDevice(this));
+        }
+        if (config.pointer) {
+            this._addDevice(new PointerDevice(this, config.pointer));
+        }
+    }
+
+    /**
+     * @param {InputDevice} device
+     */
+    _addDevice(device) {
+        this._devices.set(device.name, device);
+    }
+
+    /**
+     * @param {string} name
+     * @returns {InputDevice | undefined}
+     */
+    getDevice(name) {
+        return this._devices.get(name);
+    }
+
+    /**
+     * @param {string} action
+     * @param {"start" | "change" | "end"} type
+     * @param {ActionListener} listener
+     */
+    onAction(action, type, listener) {
+        const key = `${action}:${type}`;
+        if (!this._actionListeners.has(key)) {
+            this._actionListeners.set(key, new Set());
+        }
+        this._actionListeners.get(key).add(listener);
+    }
+
+    /**
+     * @param {string} action
+     * @param {"start" | "change" | "end"} type
+     * @param {ActionListener} listener
+     */
+    offAction(action, type, listener) {
+        this._actionListeners.get(`${action}:${type}`)?.delete(listener);
+    }
+
+    /**
+     * @param {string} action
+     * @param {"start" | "change" | "end"} type
+     * @param {any} value
+     */
+    _emitAction(action, type, value) {
+        const listeners = this._actionListeners.get(`${action}:${type}`);
+        if (!listeners) return;
+        for (const listener of listeners) {
+            listener(value);
+        }
     }
 
     /**
@@ -47,6 +121,10 @@ class InputManager {
     addBinding(action, source, required = []) {
         const binding = { action, source, required };
         const controls = [...required, source];
+
+        if (!this._actions.has(action)) {
+            this._actions.set(action, { active: false });
+        }
 
         for (const info of controls) {
             const key = this._getControlKey(info);
@@ -71,10 +149,10 @@ class InputManager {
         switch (event.type) {
             case "start":
                 state.pressed = true;
-                state.value = value;
+                state.value = event.value;
                 break;
             case "change":
-                state.value = value;
+                state.value = event.value;
                 break;
             case "end":
                 state.pressed = false;
@@ -86,10 +164,29 @@ class InputManager {
         if (!bindings) return;
 
         for (const binding of bindings) {
-            const controlsPressed = binding.required.every((controlInfo) => this._isControlPressed(controlInfo));
-            const sourceState = this._controlStates.get(binding.source);
+            if (key !== this._getControlKey(binding.source)) continue;
 
-            // TODO
+            const sourceState = this._controlStates.get(key);
+            const isActive = sourceState?.pressed && 
+                binding.required.every((controlInfo) => this._isControlPressed(controlInfo));
+
+            const action = this._actions.get(binding.action);
+            if (!action) continue;
+
+            const wasActive = action.active;
+            action.active = isActive;
+
+            if (isActive) {
+                action.value = sourceState?.value;
+            }
+
+            if (!wasActive && isActive) {
+                this._emitAction(binding.action, "start", action.value);
+            } else if (wasActive && isActive) {
+                this._emitAction(binding.action, "change", action.value);
+            } else if (wasActive && !isActive) {
+                this._emitAction(binding.action, "end");
+            }
         }
     }
 
@@ -99,7 +196,7 @@ class InputManager {
      * @returns {boolean}
      */
     _isControlPressed(controlInfo) {
-        const state = this._controlStates.get(this._key(controlInfo));
+        const state = this._controlStates.get(this._getControlKey(controlInfo));
         return state?.pressed === true;
     }
 
@@ -159,10 +256,10 @@ class InputDevice {
      * 
      * @param {string} control 
      * @param {DeviceEventType} type 
-     * @param {any} data 
+     * @param {any} value 
      */
-    emitDeviceEvent(control, type, data) {
-        this.manager.handleDeviceEvent({ device: this.name, control, type, data });
+    emitDeviceEvent(control, type, value) {
+        this.manager.handleDeviceEvent({ device: this.name, control, type, value });
     }
 }
 
@@ -175,7 +272,7 @@ class KeyboardDevice extends InputDevice {
         super(manager, "keyboard");
 
         window.addEventListener("keydown", (e) => this._handleKeyboardEvent(e, "start"));
-        window.addEventListener("keyup", e => (e) => this._handleKeyboardEvent(e, "end"));
+        window.addEventListener("keyup", (e) => this._handleKeyboardEvent(e, "end"));
     }
 
     /**
@@ -184,10 +281,9 @@ class KeyboardDevice extends InputDevice {
      * @param {DeviceEventType} deviceEventType 
      */
     _handleKeyboardEvent(e, deviceEventType) {
-        this.emitDeviceEvent({
-            control: e.code,
-            event: deviceEventType
-        });
+        if (e.repeat) return;
+
+        this.emitDeviceEvent(e.code, deviceEventType, null);
 
         for (let control of this._controls) {
             control.handleKey(e.code, deviceEventType === "start");
@@ -245,7 +341,7 @@ class PointerDevice extends InputDevice {
 
         if (deviceEventType !== "start") {
             if (owner) {
-                owner.handlePointer(eventType, e.pointerId, position);
+                owner.handlePointer(deviceEventType, e.pointerId, position);
                 if (deviceEventType === "end") {
                     this._pointerOwners.delete(e.pointerId);
                 }
@@ -256,7 +352,7 @@ class PointerDevice extends InputDevice {
         const sorted = [...this._controls].sort((a, b) => b.priority - a.priority);
 
         for (const control of sorted) {
-            const claimed = control.handlePointer("start", e.pointerId, pos);
+            const claimed = control.handlePointer("start", e.pointerId, position);
             if (claimed) {
                 this._pointerOwners.set(e.pointerId, control);
                 break;
@@ -293,10 +389,10 @@ class InputControl extends SceneNode {
     /**
      * 
      * @param {DeviceEventType} type 
-     * @param {any} data 
+     * @param {any} value 
      */
-    emitDeviceEvent(type, data) {
-        this.device.emitDeviceEvent(this.name, type, data);
+    emitDeviceEvent(type, value) {
+        this.device.emitDeviceEvent(this.name, type, value);
     }
 
     /**

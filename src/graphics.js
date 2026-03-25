@@ -50,7 +50,7 @@ class Drawable extends SceneNode {
 }
 
 /**
- * @typedef {{ width?: number, height?: number, fillColor?: string | null, strokeColor?: string | null, lineWidth?: number } & DrawableParams} RectDrawableParams
+ * @typedef {{ width: number, height: number, fillColor: string | null, strokeColor?: string | null, lineWidth?: number } & DrawableParams} RectDrawableParams
  */
 
 /**
@@ -96,9 +96,9 @@ class RectDrawable extends Drawable {
      */
     constructor(params = {}) {
         super(params);
-        this.width = params.width ?? 40;
-        this.height = params.height ?? 40;
-        this.fillColor = params.fillColor ?? null;
+        this.width = params.width;
+        this.height = params.height;
+        this.fillColor = params.fillColor;
         this.strokeColor = params.strokeColor ?? null;
         this.lineWidth = params.lineWidth ?? 1;
     }
@@ -126,7 +126,7 @@ class RectDrawable extends Drawable {
 }
 
 /**
- * @typedef {{ radius?: number, fillColor?: string | null, strokeColor?: string | null, lineWidth?: number } & DrawableParams} CircleDrawableParams
+ * @typedef {{ radius: number, fillColor: string | null, strokeColor?: string | null, lineWidth?: number } & DrawableParams} CircleDrawableParams
  */
 
 /**
@@ -168,8 +168,8 @@ class CircleDrawable extends Drawable {
      */
     constructor(params = {}) {
         super(params);
-        this.radius = params.radius ?? 20;
-        this.fillColor = params.fillColor ?? null;
+        this.radius = params.radius;
+        this.fillColor = params.fillColor;
         this.strokeColor = params.strokeColor ?? null;
         this.lineWidth = params.lineWidth ?? 1;
     }
