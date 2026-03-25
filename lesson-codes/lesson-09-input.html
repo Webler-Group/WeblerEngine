@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lesson 8 — Input | Build a 2D Engine</title>
+  <title>Lesson 9 — Input | Build a 2D Engine</title>
   <style>
     :root {
       --bg: #0f0f1e; --panel: #181828; --border: #2a2a45;
@@ -670,7 +670,7 @@ scene.addNode(new ButtonDraw(btn));</div>
     }
 
     // =========================================================================
-    // JoystickDraw — visualises a PointerJoystick (no ctx.save/restore)
+    // JoystickDraw
     // =========================================================================
     class JoystickDraw extends Drawable {
       constructor(joystick, params = {}) {
@@ -707,7 +707,7 @@ scene.addNode(new ButtonDraw(btn));</div>
     }
 
     // =========================================================================
-    // ButtonDraw — visualises a Button (no ctx.save/restore)
+    // ButtonDraw
     // =========================================================================
     class ButtonDraw extends Drawable {
       constructor(button, params = {}) {
@@ -737,7 +737,7 @@ scene.addNode(new ButtonDraw(btn));</div>
     }
 
     // =========================================================================
-    // TrailDraw — world-space trail points, rendered without save/restore
+    // TrailDraw
     // =========================================================================
     class TrailDraw extends Drawable {
       constructor(cam) {

@@ -635,6 +635,220 @@
           "codeId": "69c2dbc1d11c07f5be275b19"
         }
       ]
+    },
+    {
+      "title": "Input — Events & Actions",
+      "nodes": [
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## The Input Problem in Browser Games\n\nA game loop runs synchronously — 60 times per second it reads input, updates state, and draws a frame. The browser delivers input *asynchronously*, firing DOM events whenever the user presses a key or taps the screen.\n\nThe challenge is bridging these two worlds without coupling game logic directly to device events.\n\n### The Naive Approach\n\nMost tutorials start here:\n\n```js\ndocument.addEventListener('keydown', e => {\n  if (e.key === 'd') player.x += 5;\n});\n```\n\nThis works for a prototype but does not scale — game logic is coupled to a specific device and key, adding touch requires duplicating every check, and nothing cleans up the listener when the scene changes.\n\n### A Better Model: Three Layers\n\n| Layer | Responsibility |\n|-------|---------------|\n| **Device** | Listens to raw DOM events, normalises them, emits device events |\n| **Control** | A named logical input — maps physical keys or touches to a value |\n| **Action** | A named game intent — bound to one or more controls from any device |\n\nThe game only ever reads *actions* like `'move'` or `'fire'`. It does not care whether input came from a keyboard, touch screen, or gamepad."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## The Keyboard Event API\n\nThe browser fires `keydown` when a key is pressed and `keyup` when it is released. Both deliver a `KeyboardEvent`.\n\n### e.code vs e.key\n\n| Property | What it represents | Example |\n|---|---|---|\n| `e.code` | **Physical key** — position on the keyboard, layout-independent | `'KeyA'`, `'Space'`, `'ArrowUp'` |\n| `e.key` | **Logical character** — the value produced | `'a'` or `'A'` depending on Caps Lock |\n\nFor game controls, always use **`e.code`**. A player on an AZERTY keyboard pressing the WASD position gets `e.code = 'KeyA'` — the same as QWERTY.\n\n```js\nwindow.addEventListener('keydown', e => {\n  if (e.code === 'KeyW') /* move up — works on every layout */;\n  if (e.key  === 'w')   /* breaks on non-QWERTY or with Caps Lock */;\n});\n```\n\n### e.repeat\n\nWhen a key is held the OS fires repeated `keydown` events. Guard against this for controls that should trigger once per press:\n\n```js\nwindow.addEventListener('keydown', e => {\n  if (e.repeat) return;  // ignore OS key-repeat events\n});\n```\n\n### Store Listener References\n\n`removeEventListener` requires the **same function reference** used with `addEventListener`. Inline arrow functions are new objects every time — store them:\n\n```js\nthis._onKeyDown = e => this._handle(e, 'start');\nthis._onKeyUp   = e => this._handle(e, 'end');\nwindow.addEventListener('keydown', this._onKeyDown);\nwindow.addEventListener('keyup',   this._onKeyUp);\n// On destroy:\nwindow.removeEventListener('keydown', this._onKeyDown);\nwindow.removeEventListener('keyup',   this._onKeyUp);\n```"
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## The Pointer Event API\n\n`MouseEvent` models only a single cursor. On touch screens several contact points can be active simultaneously, and a stylus is a third input type. **Pointer events** unify all three:\n\n```js\ncanvas.addEventListener('pointerdown',   handleDown);\ncanvas.addEventListener('pointermove',   handleMove);\ncanvas.addEventListener('pointerup',     handleUp);\ncanvas.addEventListener('pointercancel', handleUp);  // OS interruption — treat as pointerup\n```\n\n### Multi-Touch via pointerId\n\nEvery active pointer receives a unique `e.pointerId`. Track it to handle multiple simultaneous contacts independently:\n\n```js\nconst active = new Map();\ncanvas.addEventListener('pointerdown', e => active.set(e.pointerId, { x: e.clientX, y: e.clientY }));\ncanvas.addEventListener('pointermove', e => {\n  if (active.has(e.pointerId)) active.get(e.pointerId).x = e.clientX;\n});\ncanvas.addEventListener('pointerup', e => active.delete(e.pointerId));\n```\n\nA mouse click also uses `pointerId = 1` — the same code handles both without branching.\n\n### setPointerCapture\n\nWhen a pointer is pressed and then dragged outside the canvas, `pointermove` stops firing. `setPointerCapture` routes all subsequent events for that id back to the canvas — essential for drag-based controls:\n\n```js\ncanvas.addEventListener('pointerdown', e => {\n  canvas.setPointerCapture(e.pointerId);  // must be called inside pointerdown\n});\n```\n\n### Disabling Browser Touch Gestures\n\n```js\ncanvas.style.touchAction = 'none';  // prevent scroll / pinch-zoom interception\n```"
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Mapping Physical Events to Abstract Actions\n\nReading raw events in game logic creates tight coupling:\n\n```js\nif (keys['KeyW']) player.moveUp();\nif (keys['Space']) player.fire();\n```\n\nAdding touch support means editing every such check. A binding layer decouples the device from the game intent.\n\n### Device → Control → Binding → Action\n\n`InputManager` sits at the centre. Devices report raw events; the manager resolves bindings and dispatches named actions:\n\n```\nKeyboard  ──►  KeyboardDPad     ──►┐\n                                    ├──► InputManager ──► action: 'move'\nPointer   ──►  PointerJoystick  ──►┘\n```\n\nEach call to `addBinding` links a named control on a device to an action name:\n\n```js\ninput.addBinding('move', { device: 'keyboard', control: 'dpad' });\ninput.addBinding('move', { device: 'pointer',  control: 'joystick' });\n// Both now drive the same action — no changes needed in game code\n```\n\n### Action Lifecycle Events\n\nActions emit three events mirroring the pressed / held / released lifecycle:\n\n```js\ninput.onAction('move', 'start',  v => startMoving(v));    // first frame active\ninput.onAction('move', 'change', v => updateVelocity(v)); // held, value changed\ninput.onAction('move', 'end',    () => stopMoving());     // released\n```\n\nGame code reacts to `'move'` and is completely unaware of which physical device produced it."
+        },
+        {
+          "type": 2,
+          "text": "A player presses the 'A' key with Caps Lock off. What is the value of e.code?",
+          "answers": [
+            {
+              "text": "'KeyA' — the physical key position on the keyboard, independent of layout",
+              "correct": true
+            },
+            {
+              "text": "'a' — the lowercase character produced by the key",
+              "correct": false
+            },
+            {
+              "text": "'A' — the uppercase character name",
+              "correct": false
+            },
+            {
+              "text": "65 — the legacy numeric key code",
+              "correct": false
+            }
+          ]
+        },
+        {
+          "type": 2,
+          "text": "A keydown listener fires repeatedly while the user holds a key. Which property on the event identifies these as OS repeat events rather than new presses?",
+          "answers": [
+            {
+              "text": "e.repeat",
+              "correct": true
+            },
+            {
+              "text": "e.held",
+              "correct": false
+            },
+            {
+              "text": "e.isComposing",
+              "correct": false
+            },
+            {
+              "text": "e.continuous",
+              "correct": false
+            }
+          ]
+        },
+        {
+          "type": 2,
+          "text": "Why are pointer events preferred over separate mouse and touch listeners for game input?",
+          "answers": [
+            {
+              "text": "They unify mouse, touch, and pen input under one API and expose a unique pointerId per contact for multi-touch tracking",
+              "correct": true
+            },
+            {
+              "text": "They fire at a higher frequency than mouse events, giving finer movement resolution",
+              "correct": false
+            },
+            {
+              "text": "Mouse events are deprecated in modern browsers and scheduled for removal",
+              "correct": false
+            },
+            {
+              "text": "Touch events do not expose clientX / clientY coordinates, making position tracking impossible",
+              "correct": false
+            }
+          ]
+        },
+        {
+          "type": 2,
+          "text": "A joystick control calls canvas.setPointerCapture(e.pointerId) inside its pointerdown handler. What does this achieve?",
+          "answers": [
+            {
+              "text": "All subsequent events for that pointer id are routed to the canvas even if the pointer moves outside its bounds",
+              "correct": true
+            },
+            {
+              "text": "The pointer position is locked to the coordinates at the time of the pointerdown event",
+              "correct": false
+            },
+            {
+              "text": "The canvas gains exclusive ownership of all active pointers, blocking other elements",
+              "correct": false
+            },
+            {
+              "text": "The event is prevented from bubbling to parent elements in the DOM",
+              "correct": false
+            }
+          ]
+        },
+        {
+          "type": 2,
+          "text": "Which CSS property must be set on a canvas to prevent the browser from intercepting touches for scrolling or pinch-zoom?",
+          "answers": [
+            {
+              "text": "touch-action: none",
+              "correct": true
+            },
+            {
+              "text": "pointer-events: none",
+              "correct": false
+            },
+            {
+              "text": "user-select: none",
+              "correct": false
+            },
+            {
+              "text": "overflow: hidden",
+              "correct": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Input — Implementation",
+      "nodes": [
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## InputManager — Structure\n\n`InputManager` is the central hub. It maintains four internal maps:\n\n| Map | Key | Value |\n|-----|-----|-------|\n| `_controlStates` | `'device:control'` | `{ pressed, value }` — current physical state |\n| `_controlToBindings` | `'device:control'` | `Binding[]` — bindings that involve this control |\n| `_actions` | action name | `{ active, value }` — current action state |\n| `_actionListeners` | `'action:type'` | `Set<listener>` — callbacks for each lifecycle event |\n\nThe constructor creates devices from a config object and registers them:\n\n```js\nconstructor(config = {}) {\n  this._controlStates     = new Map();\n  this._controlToBindings = new Map();\n  this._actions           = new Map();\n  this._actionListeners   = new Map();\n  this._devices           = new Map();\n\n  if (config.keyboard) this._addDevice(new KeyboardDevice(this));\n  if (config.pointer)  this._addDevice(new PointerDevice(this, config.pointer));\n}\n```\n\nThe config pattern keeps callers in control of which devices are active:\n\n```js\nconst input = new InputManager({ keyboard: true, pointer: canvas });\n```\n\n`destroy()` forwards to every device so their DOM listeners are cleaned up:\n\n```js\ndestroy() {\n  for (const device of this._devices.values()) device.destroy();\n  this._devices.clear();\n}\n```"
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## InputManager — addBinding & handleDeviceEvent\n\n### addBinding\n\n`addBinding` stores a binding and indexes it under **every control involved** — both the source and any required modifiers. That way, when any of those controls fires an event, the binding is found in O(1):\n\n```js\naddBinding(action, source, required = []) {\n  const binding = { action, source, required };\n  if (!this._actions.has(action)) this._actions.set(action, { active: false });\n\n  for (const info of [...required, source]) {\n    const key = `${info.device}:${info.control}`;\n    if (!this._controlToBindings.has(key)) this._controlToBindings.set(key, []);\n    this._controlToBindings.get(key).push(binding);\n  }\n}\n```\n\n### handleDeviceEvent — Four Steps\n\nEvery device calls this when a raw event fires:\n\n**1 — Update control state:**\n```js\nconst key   = `${event.device}:${event.control}`;\nconst state = getOrCreate(this._controlStates, key);\nif (event.type === 'start')  { state.pressed = true;  state.value = event.value; }\nif (event.type === 'change') { state.value   = event.value; }\nif (event.type === 'end')    { state.pressed = false; }\n```\n\n**2 — Look up bindings** for this control (O(1) map lookup).\n\n**3 — Evaluate each binding** — skip if this control is only a required modifier, then check all required controls are pressed:\n```js\nconst isActive = state.pressed &&\n  binding.required.every(ci => this._isControlPressed(ci));\n```\n\n**4 — Emit action lifecycle event** based on the previous and new active state:\n```js\nif (!wasActive && isActive)      this._emitAction(action, 'start',  value);\nelse if (wasActive && isActive)  this._emitAction(action, 'change', value);\nelse if (wasActive && !isActive) this._emitAction(action, 'end');\n```"
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## InputDevice & KeyboardDevice\n\n### InputDevice — Base Class\n\n`InputDevice` owns the set of registered controls and routes events to `InputManager`:\n\n```js\nclass InputDevice {\n  constructor(manager, name) {\n    this.manager   = manager;\n    this.name      = name;\n    this._controls = new Set();\n  }\n  registerControl(c)   { this._controls.add(c); }\n  unregisterControl(c) { this._controls.delete(c); }\n  emitDeviceEvent(control, type, value) {\n    this.manager.handleDeviceEvent({ device: this.name, control, type, value });\n  }\n  destroy() { this._controls.clear(); }  // subclasses call super.destroy()\n}\n```\n\nControls register in `start()` and unregister in `destroy()`, tying their lifetime to the scene node lifecycle.\n\n### KeyboardDevice — Step by Step\n\n**Step 1 — Store listener references** in the constructor:\n```js\nthis._onKeyDown = e => this._handle(e, 'start');\nthis._onKeyUp   = e => this._handle(e, 'end');\nwindow.addEventListener('keydown', this._onKeyDown);\nwindow.addEventListener('keyup',   this._onKeyUp);\n```\n\n**Step 2 — Remove them on destroy:**\n```js\ndestroy() {\n  super.destroy();  // clears _controls\n  window.removeEventListener('keydown', this._onKeyDown);\n  window.removeEventListener('keyup',   this._onKeyUp);\n}\n```\n\n**Step 3 — Dual dispatch in _handle:**\n```js\n_handle(e, type) {\n  if (e.repeat) return;  // guard OS key-repeat\n  this.emitDeviceEvent(e.code, type, null); // feeds the action system\n  for (const c of this._controls) c.handleKey(e.code, type === 'start');\n}\n```\n\nThe dual dispatch is intentional: `KeyboardDPad` must track four keys simultaneously to build a direction vector — that compound state cannot be expressed as a single device event."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## PointerDevice — Step by Step\n\n`PointerDevice` introduces `_pointerOwners` — a `Map<pointerId, InputControl>` that records which control claimed each active pointer at start.\n\n**Step 1 — Constructor: store refs, set touchAction, init map:**\n```js\nconstructor(manager, canvas) {\n  super(manager, 'pointer');\n  this.canvas         = canvas;\n  this._pointerOwners = new Map();\n  canvas.style.touchAction = 'none';\n\n  this._onPointerDown   = e => this._handle(e, 'start');\n  this._onPointerMove   = e => this._handle(e, 'change');\n  this._onPointerUp     = e => this._handle(e, 'end');\n  this._onPointerCancel = e => this._handle(e, 'end');\n  canvas.addEventListener('pointerdown',   this._onPointerDown);\n  canvas.addEventListener('pointermove',   this._onPointerMove);\n  canvas.addEventListener('pointerup',     this._onPointerUp);\n  canvas.addEventListener('pointercancel', this._onPointerCancel);\n}\n```\n\n**Step 2 — Destroy removes all four listeners:**\n```js\ndestroy() {\n  super.destroy();\n  canvas.removeEventListener('pointerdown',   this._onPointerDown);\n  // ... same for the other three\n}\n```\n\n**Step 3 — _handle: two separate paths for start vs move/end:**\n```js\n_handle(e, type) {\n  const rect = this.canvas.getBoundingClientRect();\n  const pos  = new Vector(\n    (e.clientX - rect.left) / rect.width,   // normalise to [0, 1]\n    (e.clientY - rect.top)  / rect.height\n  );\n  if (type === 'start') {\n    this.canvas.setPointerCapture(e.pointerId);\n    const sorted = [...this._controls].sort((a, b) => b.priority - a.priority);\n    for (const c of sorted) {\n      if (c.handlePointer('start', e.pointerId, pos)) {\n        this._pointerOwners.set(e.pointerId, c);  // record owner\n        break;  // first control to claim wins\n      }\n    }\n    return;\n  }\n  const owner = this._pointerOwners.get(e.pointerId);\n  if (owner) {\n    owner.handlePointer(type, e.pointerId, pos);\n    if (type === 'end') this._pointerOwners.delete(e.pointerId);\n  }\n}\n```\n\nRouting move/end exclusively to the owner prevents two controls fighting over the same finger and avoids re-running hit-tests every frame."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Controls & Screen-to-World\n\n### InputControl — Scene Lifecycle\n\n`InputControl` extends `SceneNode`. Its `start()` and `destroy()` hook into the scene lifecycle to register and unregister with the device automatically:\n\n```js\nstart()   { this.device.registerControl(this); }\ndestroy() { super.destroy(); this.device.unregisterControl(this); }\n```\n\n### KeyboardDPad\n\nMaps four keys to a `(-1..1, -1..1)` direction vector, tracking each key independently so diagonals work. Emits `start` / `change` / `end` based on whether the resulting vector is non-zero:\n\n```js\nthis.vec.x = (this.states.right ? 1 : 0) - (this.states.left ? 1 : 0);\nthis.vec.y = (this.states.down  ? 1 : 0) - (this.states.up   ? 1 : 0);\nif (!wasMoving && isMoving)  this.emitDeviceEvent('start',  this.vec.clone());\nthis.emitDeviceEvent('change', this.vec.clone());\nif (wasMoving  && !isMoving) this.emitDeviceEvent('end',    this.vec.clone());\n```\n\n### PointerJoystick & Button — Screen Pixel Space\n\nBoth controls sit in **canvas pixel space** — `position` holds canvas pixel coordinates, not world coordinates. `_hitTest` converts normalised pointer back to pixels to compare:\n\n```js\n_hitTest(pos) {\n  const px = pos.x * this.device.canvas.width;\n  const py = pos.y * this.device.canvas.height;\n  const c  = this.getWorldPosition();  // stored as canvas pixels\n}\n```\n\n### Screen-to-World\n\n`PointerPosition` converts normalised coords to world space by inverting the combined camera projection-view matrix — a single built-in `DOMMatrix` operation:\n\n```js\nscreenToWorld(normX, normY) {\n  const pv = this.getProjMatrix(W, H).multiply(this.getViewMatrix());\n  pv.invertSelf();\n  const pt = pv.transformPoint({ x: normX * W, y: normY * H });\n  return new Vector(pt.x, pt.y);\n}\n```"
+        },
+        {
+          "type": 2,
+          "text": "InputManager.addBinding indexes the new binding in _controlToBindings under which keys?",
+          "answers": [
+            {
+              "text": "Under 'device:control' for every control involved — both the source and any required modifiers",
+              "correct": true
+            },
+            {
+              "text": "Only under the source control's key",
+              "correct": false
+            },
+            {
+              "text": "Under the action name so it can be looked up when onAction is called",
+              "correct": false
+            },
+            {
+              "text": "Under the device name only, so all controls on a device share one entry",
+              "correct": false
+            }
+          ]
+        },
+        {
+          "type": 2,
+          "text": "In PointerDevice, why are pointermove and pointerup events routed only to the control in _pointerOwners rather than dispatched to all controls again?",
+          "answers": [
+            {
+              "text": "To ensure the control that claimed the pointer at start receives all subsequent events for that contact, avoiding repeated hit-tests and ownership conflicts",
+              "correct": true
+            },
+            {
+              "text": "Because pointermove events do not carry position data and cannot be hit-tested",
+              "correct": false
+            },
+            {
+              "text": "To reduce the number of DOM events the browser needs to fire",
+              "correct": false
+            },
+            {
+              "text": "Because only the highest-priority control is ever allowed to handle any pointer event",
+              "correct": false
+            }
+          ]
+        },
+        {
+          "type": 5,
+          "mode": 1,
+          "codeId": "69c45e6994c75307f38a1497"
+        }
+      ]
     }
   ]
 }
