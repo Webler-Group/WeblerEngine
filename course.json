@@ -849,6 +849,85 @@
           "codeId": "69c45e6994c75307f38a1497"
         }
       ]
+    },
+    {
+      "title": "Optimisation",
+      "nodes": [
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Bounds — Axis-Aligned Bounding Boxes\n\nAn **AABB** (axis-aligned bounding box) is the simplest possible volume that encloses a shape — a rectangle whose edges are always parallel to the world axes.\n\nIn `utils.js` the `Bounds` typedef defines it:\n\n```js\n// { minX, minY, maxX, maxY } in world (or local) space\nconst bounds = { minX: -20, minY: -30, maxX: 20, maxY: 30 };\n```\n\n`boundsOverlap` tests whether two AABBs intersect:\n\n```js\nconst boundsOverlap = (a, b) =>\n    a.maxX >= b.minX && a.minX <= b.maxX &&\n    a.maxY >= b.minY && a.minY <= b.maxY;\n```\n\nAABBs are fast: an overlap test is four comparisons. They are not tight around rotated or irregular shapes, but they are cheap enough to use as a **first-pass rejection**. If the AABBs do not overlap, no expensive per-pixel or per-triangle test is needed.\n\n### Drawable bounds\n\n`Drawable` stores a **local-space** AABB (`bounds`) and a **world-space** AABB (`_worldBounds`). The local bounds are set once in the constructor and match the shape's visual extents centered at the origin:\n\n```js\n// RectDrawable — set in constructor:\nthis.bounds = {\n  minX: -this.width / 2,  minY: -this.height / 2,\n  maxX:  this.width / 2,  maxY:  this.height / 2,\n};\n```\n\nSet `bounds = null` to disable culling for a specific drawable."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## SceneNode Matrix — Caching the World Transform\n\nEvery `SceneNode` owns a cached world transform:\n\n```js\nthis._worldPosition = Vector.zero();  // cached world pos\nthis._worldAngle    = 0;              // cached world angle\nthis._worldScale    = Vector.one();   // cached world scale\nthis._worldMatrix   = new DOMMatrix();// packed into a matrix\n```\n\n`recomputeWorldTransform()` refreshes these from the parent's cached values:\n\n```js\nrecomputeWorldTransform() {\n    if (!this.parent) {\n        this._worldPosition = this.position.clone();\n        // ... angle, scale\n    } else {\n        const p = this.parent;\n        this._worldPosition = p._worldPosition.clone()\n            .add(this.position.clone().mul(p._worldScale).rotate(p._worldAngle));\n        // ...\n    }\n    // Build world matrix from cached values\n    this._worldMatrix = new DOMMatrix([...]);\n}\n```\n\n### matrixAutoUpdate\n\n`matrixAutoUpdate = false` skips `recomputeWorldTransform` for that node every frame. Use it for nodes that are placed once and never move — background tiles, static scenery, terrain:\n\n```js\nconst tile = new Tile();\ntile.position.set(400, 200);\ntile.matrixAutoUpdate = false;\ntile.recomputeWorldTransform(); // prime the cache once\n// Now recompute is skipped every frame — only dynamic nodes pay the cost\n```\n\nChildren are **always** traversed regardless of `matrixAutoUpdate`, so a dynamic child of a static parent still updates correctly."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## World Transform Propagation\n\n`updateWorldTransform()` traverses the scene graph from a root node down to all descendants. `Scene.update()` calls it for every root node (nodes with no parent) after the per-node `update(dt)` loop:\n\n```js\n// In Scene.update(dt):\nfor (const node of this.nodes) {\n    node.update(dt);       // game logic first\n}\nfor (const node of this.nodes) {\n    if (!node.parent) {\n        node.updateWorldTransform(); // propagate from roots\n    }\n}\n```\n\nThe traversal itself:\n\n```js\nupdateWorldTransform() {\n    if (this.matrixAutoUpdate) {\n        this.recomputeWorldTransform(); // refresh this node's cache\n    }\n    for (const child of this.children) {\n        child.updateWorldTransform();   // recurse into children\n    }\n}\n```\n\n### Why propagate from roots?\n\nA child's world transform depends on its parent's cached world transform. If the parent updates first (root → children order), the child always reads a fresh parent cache. Running bottom-up would give stale parent data.\n\nScenes with 50 dynamic objects and 500 static tiles recompute only 50 matrices per frame when static nodes have `matrixAutoUpdate = false` — a 10× saving on the most expensive part of the update pass."
+        },
+        {
+          "type": 1,
+          "mode": 1,
+          "text": "## Camera Culling\n\nThe renderer skips any `Drawable` whose world AABB does not overlap the camera's world AABB. This is **frustum culling** — drawing only what the camera can actually see.\n\n### Camera world bounds\n\nThe `Camera` computes its own `_worldBounds` each frame by inverting the projection-view matrix and mapping the four screen corners back to world space:\n\n```js\n// In Camera.recomputeWorldTransform():\nconst c0 = this.screenToWorld(0, 0); // top-left\nconst c1 = this.screenToWorld(1, 0); // top-right\nconst c2 = this.screenToWorld(0, 1); // bottom-left\nconst c3 = this.screenToWorld(1, 1); // bottom-right\nthis._worldBounds = {\n    minX: Math.min(c0.x, c1.x, c2.x, c3.x),\n    // ... maxX, minY, maxY\n};\n```\n\n### Drawable world bounds\n\n`Drawable.recomputeWorldTransform()` computes `_worldBounds` from the local `bounds` and the world matrix — transforming all four corners and taking the min/max.\n\n### The culling check\n\nInside `Renderer.render()`, before each `draw()` call:\n\n```js\nif (cam !== null &&\n    drawable._worldBounds !== null &&\n    cam._worldBounds !== null) {\n    if (!boundsOverlap(drawable._worldBounds, cam._worldBounds)) {\n        continue; // skip — not visible\n    }\n}\n```\n\nA scene with 500 objects where the camera sees 30 of them draws exactly 30 — the other 470 are rejected in four integer comparisons each."
+        },
+        {
+          "type": 2,
+          "text": "A node has matrixAutoUpdate = false and you call recomputeWorldTransform() once after placing it. What happens to that node's cached world transform during subsequent frames?",
+          "answers": [
+            {
+              "text": "It stays at the value from the last manual call — the automatic per-frame update is skipped",
+              "correct": true
+            },
+            {
+              "text": "It is reset to (0, 0) because the automatic update is skipped",
+              "correct": false
+            },
+            {
+              "text": "It is still recalculated, but only every other frame to save time",
+              "correct": false
+            },
+            {
+              "text": "It becomes invalid — you must set matrixAutoUpdate = true to read world position",
+              "correct": false
+            }
+          ]
+        },
+        {
+          "type": 2,
+          "text": "A Drawable is entirely off-screen. What happens to it during Renderer.render() when culling is active?",
+          "answers": [
+            {
+              "text": "Its draw() method is not called — the renderer skips it after the AABB overlap check fails",
+              "correct": true
+            },
+            {
+              "text": "It is drawn but immediately clipped by the canvas clipping region",
+              "correct": false
+            },
+            {
+              "text": "It is removed from the scene automatically",
+              "correct": false
+            },
+            {
+              "text": "Its draw() is called but the canvas ignores pixels outside the viewport",
+              "correct": false
+            }
+          ]
+        },
+        {
+          "type": 4,
+          "text": "Scene.update() calls updateWorldTransform() only on nodes with no parent. What property identifies a root node?",
+          "correctAnswer": "parent"
+        },
+        {
+          "type": 5,
+          "mode": 1,
+          "codeId": "69c6e8f71e49727f77159447"
+        }
+      ]
     }
   ]
 }

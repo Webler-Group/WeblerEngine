@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 11 — Optimisation | Build a 2D Engine</title>
+  <style>
+    :root {
+      --bg: #0f0f1e; --panel: #181828; --border: #2a2a45;
+      --accent: #4cc9f0; --green: #4ade80; --pink: #f72585;
+      --yellow: #fbbf24; --purple: #a78bfa; --orange: #fb923c;
+      --text: #cdd6f4; --muted: #6b7280;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Consolas', 'Courier New', monospace; padding: 24px; }
+    header { margin-bottom: 20px; }
+    header h1 { color: var(--accent); font-size: 1.3rem; margin-bottom: 4px; }
+    header p  { color: var(--muted); font-size: 0.82rem; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+    .tab { padding: 7px 14px; background: var(--panel); border: 1px solid var(--border); color: var(--muted); cursor: pointer; border-radius: 5px; font-family: inherit; font-size: 0.8rem; transition: border-color 0.15s, color 0.15s; }
+    .tab:hover  { color: var(--text); border-color: var(--accent); }
+    .tab.active { color: var(--accent); border-color: var(--accent); background: #141428; }
+    .demo-area { display: flex; gap: 14px; align-items: flex-start; }
+    .canvas-col { display: flex; flex-direction: column; flex-shrink: 0; }
+    canvas { border: 1px solid var(--border); border-radius: 6px; background: #08080f; display: block; width: 100%; max-width: 560px; height: auto; }
+    .info { width: 260px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 16px; min-height: 420px; }
+    .info h3 { color: var(--accent); font-size: 0.85rem; margin-bottom: 10px; }
+    .info p   { color: var(--muted); font-size: 0.78rem; line-height: 1.65; margin-bottom: 10px; }
+    .val-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 0.76rem; }
+    .val-row:last-of-type { border-bottom: none; }
+    .val-label { color: var(--muted); }
+    .val-num          { color: var(--green);  font-weight: bold; }
+    .val-num.yellow   { color: var(--yellow); }
+    .val-num.accent   { color: var(--accent); }
+    .val-num.pink     { color: var(--pink);   }
+    .val-num.orange   { color: var(--orange); }
+    .code-block { margin-top: 10px; background: #08080f; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 4px; padding: 10px 12px; font-size: 0.71rem; color: #a5b4fc; line-height: 1.7; white-space: pre; overflow-x: auto; }
+    .ctrl-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 0 2px; gap: 8px; max-width: 560px; }
+    .dpad { display: grid; grid-template-columns: repeat(3, 38px); grid-template-rows: repeat(3, 38px); gap: 2px; }
+    .btn { background: var(--panel); color: var(--muted); border: 1px solid var(--border); border-radius: 6px; font-size: 15px; width: 38px; height: 38px; cursor: pointer; display: flex; align-items: center; justify-content: center; user-select: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; font-family: inherit; transition: background 0.06s, color 0.06s; }
+    .btn.held, .btn:active { background: #252542; color: var(--text); border-color: var(--accent); }
+    .ctrl-hint { flex: 1; text-align: center; color: var(--muted); font-size: 0.72rem; line-height: 1.7; }
+    .toggle-btn { padding: 7px 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 5px; color: var(--text); cursor: pointer; font-family: inherit; font-size: 0.78rem; white-space: nowrap; transition: background 0.1s, border-color 0.1s; }
+    .toggle-btn.on { border-color: var(--green); color: var(--green); background: rgba(74,222,128,0.08); }
+    .tree-line { font-size: 0.74rem; color: var(--muted); line-height: 2; padding: 2px 0; }
+    .tree-line .name   { color: var(--accent); }
+    .tree-line .pos    { color: var(--yellow); }
+    @media (max-width: 740px) {
+      body { padding: 12px; }
+      .demo-area { flex-direction: column; }
+      .info { width: 100%; min-height: auto; }
+      .tab { padding: 6px 10px; font-size: 0.75rem; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>Lesson 11 — Optimisation</h1>
+    <p>Three demos: <strong>Parenting</strong> (hierarchy and keepWorldPosition), <strong>Static Nodes</strong> (matrixAutoUpdate = false), and <strong>Camera Culling</strong> (Drawable bounds vs Camera bounds).</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="setDemo(0)">1. Parenting</button>
+    <button class="tab"        onclick="setDemo(1)">2. Static Nodes</button>
+    <button class="tab"        onclick="setDemo(2)">3. Camera Culling</button>
+  </div>
+
+  <div class="demo-area">
+    <div class="canvas-col">
+      <canvas id="canvas" width="560" height="420"></canvas>
+
+      <!-- Controls for Demo 0 -->
+      <div class="ctrl-bar" id="ctrl-bar-0">
+        <div class="ctrl-hint">Watch the hierarchy animate — moons follow planets, planets follow the sun.</div>
+        <button class="toggle-btn" id="btn-detach">Detach moon</button>
+      </div>
+
+      <!-- Controls for Demo 1 -->
+      <div class="ctrl-bar" id="ctrl-bar-1" style="display:none">
+        <div class="ctrl-hint">Toggle optimisation to skip matrix updates for static nodes.</div>
+        <button class="toggle-btn" id="btn-static">Enable static</button>
+      </div>
+
+      <!-- Controls for Demo 2 -->
+      <div class="ctrl-bar" id="ctrl-bar-2" style="display:none">
+        <div class="dpad" id="dpad-cull">
+          <div></div>
+          <button class="btn" id="btn-cu" aria-label="Up">↑</button>
+          <div></div>
+          <button class="btn" id="btn-cl" aria-label="Left">←</button>
+          <div></div>
+          <button class="btn" id="btn-cr" aria-label="Right">→</button>
+          <div></div>
+          <button class="btn" id="btn-cd" aria-label="Down">↓</button>
+          <div></div>
+        </div>
+        <div class="ctrl-hint">WASD / arrows or on-canvas joystick — pan camera</div>
+      </div>
+    </div>
+
+    <!-- Panel 0: Parenting -->
+    <div class="info" id="panel-0">
+      <h3>Scene Hierarchy</h3>
+      <p>Parent rotation propagates to children. World position is the sum of local transforms up the chain.</p>
+      <div id="tree-sun"    class="tree-line"><span class="name">sun</span> <span class="pos" id="p0-sun">—</span></div>
+      <div id="tree-earth"  class="tree-line">&nbsp;└ <span class="name">earth</span> <span class="pos" id="p0-earth">—</span></div>
+      <div id="tree-moon"   class="tree-line">&nbsp;&nbsp;&nbsp;└ <span class="name">moon</span> <span class="pos" id="p0-moon">—</span></div>
+      <div id="tree-mars"   class="tree-line">&nbsp;└ <span class="name">mars</span> <span class="pos" id="p0-mars">—</span></div>
+      <div class="val-row" style="margin-top:8px"><span class="val-label">moon parent</span><span class="val-num accent" id="p0-parent">earth</span></div>
+      <div class="code-block">moon.setParent(null, true);
+// keepWorldPosition = true
+// moon stays at world pos
+// but is no longer a child</div>
+    </div>
+
+    <!-- Panel 1: Static Nodes -->
+    <div class="info" id="panel-1" style="display:none">
+      <h3>matrixAutoUpdate</h3>
+      <p>Set <code>matrixAutoUpdate = false</code> on nodes that never move. Their world transform is computed once, then skipped each frame.</p>
+      <div class="val-row"><span class="val-label">total nodes</span><span class="val-num" id="p1-total">—</span></div>
+      <div class="val-row"><span class="val-label">dynamic (animated)</span><span class="val-num yellow" id="p1-dyn">6</span></div>
+      <div class="val-row"><span class="val-label">static (tiles)</span><span class="val-num orange" id="p1-static">48</span></div>
+      <div class="val-row"><span class="val-label">recomputes/frame</span><span class="val-num pink" id="p1-count">—</span></div>
+      <div class="val-row"><span class="val-label">optimised</span><span class="val-num accent" id="p1-opt">off</span></div>
+      <div class="code-block">// Once, after placing node:
+tile.matrixAutoUpdate = false;
+tile.recomputeWorldTransform();
+
+// Now skipped every frame —
+// only dynamic nodes update</div>
+    </div>
+
+    <!-- Panel 2: Camera Culling -->
+    <div class="info" id="panel-2" style="display:none">
+      <h3>Camera Culling</h3>
+      <p>The renderer checks each drawable's world AABB against the camera's visible AABB. Off-screen drawables are skipped entirely.</p>
+      <div class="val-row"><span class="val-label">total objects</span><span class="val-num" id="p2-total">80</span></div>
+      <div class="val-row"><span class="val-label">in view (drawn)</span><span class="val-num green" id="p2-drawn">—</span></div>
+      <div class="val-row"><span class="val-label">culled (skipped)</span><span class="val-num pink" id="p2-culled">—</span></div>
+      <div class="code-block">// Renderer culling check:
+if (drawable._worldBounds &&
+    cam._worldBounds) {
+  if (!boundsOverlap(
+    drawable._worldBounds,
+    cam._worldBounds)) continue;
+}</div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // Vector
+    // =========================================================================
+    class Vector {
+      constructor(x = 0, y = 0) { this.x = x; this.y = y; }
+      static zero()         { return new Vector(0, 0); }
+      static one()          { return new Vector(1, 1); }
+      static fromAngle(rad) { return new Vector(Math.cos(rad), Math.sin(rad)); }
+      set(x, y)   { this.x = x; this.y = y; return this; }
+      copy(v)     { this.x = v.x; this.y = v.y; return this; }
+      clone()     { return new Vector(this.x, this.y); }
+      add(v)      { this.x += v.x; this.y += v.y; return this; }
+      sub(v)      { this.x -= v.x; this.y -= v.y; return this; }
+      mul(v)      { this.x *= v.x; this.y *= v.y; return this; }
+      div(v)      { this.x /= v.x; this.y /= v.y; return this; }
+      scale(s)    { this.x *= s;   this.y *= s;   return this; }
+      negate()    { this.x = -this.x; this.y = -this.y; return this; }
+      normalize() { const l = Math.sqrt(this.x*this.x+this.y*this.y); if (l>0){this.x/=l;this.y/=l;} return this; }
+      rotate(rad) { const c=Math.cos(rad),s=Math.sin(rad),nx=this.x*c-this.y*s; this.y=this.x*s+this.y*c; this.x=nx; return this; }
+      length()    { return Math.sqrt(this.x*this.x+this.y*this.y); }
+      dot(v)      { return this.x*v.x+this.y*v.y; }
+    }
+
+    // =========================================================================
+    // SceneNode — with full matrix caching and matrixAutoUpdate
+    // =========================================================================
+    class SceneNode {
+      static _nextId = 0;
+      static _recomputeCount = 0;  // counts recomputeWorldTransform calls per frame
+
+      constructor() {
+        this.id   = SceneNode._nextId++;
+        this.name = `node_${this.id}`;
+        this.scene = null;
+        this.position = Vector.zero();
+        this.angle    = 0;
+        this.scale    = Vector.one();
+        // Matrix caching
+        this.matrixAutoUpdate = true;
+        this._worldPosition = Vector.zero();
+        this._worldAngle    = 0;
+        this._worldScale    = Vector.one();
+        this._worldMatrix   = new DOMMatrix();
+        this.parent   = null;
+        this.children = [];
+        this._listeners = new Map();
+      }
+
+      // Recompute this node's cached world transform from parent's cached values.
+      recomputeWorldTransform() {
+        SceneNode._recomputeCount++;
+        if (!this.parent) {
+          this._worldPosition = this.position.clone();
+          this._worldAngle    = this.angle;
+          this._worldScale    = this.scale.clone();
+        } else {
+          const p = this.parent;
+          this._worldPosition = p._worldPosition.clone()
+            .add(this.position.clone().mul(p._worldScale).rotate(p._worldAngle));
+          this._worldAngle = p._worldAngle + this.angle;
+          this._worldScale = p._worldScale.clone().mul(this.scale);
+        }
+        const cos = Math.cos(this._worldAngle);
+        const sin = Math.sin(this._worldAngle);
+        this._worldMatrix = new DOMMatrix([
+          this._worldScale.x * cos, this._worldScale.x * sin,
+          -this._worldScale.y * sin, this._worldScale.y * cos,
+          this._worldPosition.x, this._worldPosition.y,
+        ]);
+      }
+
+      // Traverse from this root node down, updating nodes where matrixAutoUpdate is true.
+      // Children are always traversed so dynamic children of static parents update correctly.
+      updateWorldTransform() {
+        if (this.matrixAutoUpdate) this.recomputeWorldTransform();
+        for (const child of this.children) child.updateWorldTransform();
+      }
+
+      getWorldPosition() { return this._worldPosition.clone(); }
+      getWorldAngle()    { return this._worldAngle; }
+      getWorldScale()    { return this._worldScale.clone(); }
+
+      setParent(node, keepWorldPosition = false) {
+        if (this.parent) {
+          const idx = this.parent.children.indexOf(this);
+          if (idx !== -1) this.parent.children.splice(idx, 1);
+        }
+        if (keepWorldPosition) {
+          const wp = this._worldPosition.clone();
+          const wa = this._worldAngle;
+          const ws = this._worldScale.clone();
+          this.parent = node;
+          if (node) {
+            this.position.copy(wp.sub(node._worldPosition).rotate(-node._worldAngle).div(node._worldScale));
+            this.angle = wa - node._worldAngle;
+            this.scale.copy(ws.div(node._worldScale));
+          } else {
+            this.position.copy(wp);
+            this.angle = wa;
+            this.scale.copy(ws);
+          }
+        } else {
+          this.parent = node;
+        }
+        if (node) node.children.push(this);
+      }
+
+      on(type, h)   { if (!this._listeners.has(type)) this._listeners.set(type, new Set()); this._listeners.get(type).add(h); }
+      off(type, h)  { this._listeners.get(type)?.delete(h); }
+      emit(type, d) { const ls = this._listeners.get(type); if (!ls) return; for (const h of [...ls]) h({type,data:d,target:this}); }
+      start()    {}
+      update(dt) {}
+      destroy()  { this._listeners.clear(); if (this.parent) { const i = this.parent.children.indexOf(this); if (i !== -1) this.parent.children.splice(i, 1); } }
+    }
+
+    // =========================================================================
+    // Scene
+    // =========================================================================
+    class Scene {
+      constructor() { this.nodes = []; this.pending = []; this.pendingRemoval = []; this.running = false; }
+      addNode(node) {
+        node.scene = this;
+        if (this.running) { this.pending.push(node); }
+        else { this.nodes.push(node); node.start(); }
+      }
+      removeNode(node) {
+        for (const child of [...node.children]) this.removeNode(child);
+        const pi = this.pending.indexOf(node);
+        if (pi !== -1) { this.pending.splice(pi, 1); node.destroy(); node.scene = null; return; }
+        if (this.running) { if (!this.pendingRemoval.includes(node)) this.pendingRemoval.push(node); }
+        else { const i = this.nodes.indexOf(node); if (i !== -1) { this.nodes.splice(i, 1); node.destroy(); node.scene = null; } }
+      }
+      findNodesByType(T) { return this.nodes.filter(n => n instanceof T); }
+      start() { this.running = true; }
+      update(dt) {
+        if (this.pendingRemoval.length > 0) {
+          for (const n of this.pendingRemoval) { const i = this.nodes.indexOf(n); if (i !== -1) this.nodes.splice(i, 1); n.destroy(); n.scene = null; }
+          this.pendingRemoval = [];
+        }
+        if (this.pending.length > 0) {
+          for (const n of this.pending) { this.nodes.push(n); n.start(); }
+          this.pending = [];
+        }
+        for (const n of this.nodes) n.update(dt);
+        // Update world transforms — only root nodes; they traverse children recursively
+        SceneNode._recomputeCount = 0;
+        for (const n of this.nodes) { if (!n.parent) n.updateWorldTransform(); }
+      }
+      destroy() {
+        for (const n of [...this.nodes, ...this.pending]) { n.destroy(); n.scene = null; }
+        this.nodes = []; this.pending = []; this.pendingRemoval = [];
+        this.running = false;
+      }
+    }
+
+    // =========================================================================
+    // SceneManager
+    // =========================================================================
+    class SceneManager {
+      constructor() { this.registry = new Map(); this.currentScene = null; }
+      register(name, init) { this.registry.set(name, init); }
+      update(dt) { if (this.currentScene) this.currentScene.update(dt); }
+      switchScene(name, params = {}) {
+        const init = this.registry.get(name);
+        if (!init) throw new Error(`Unknown scene "${name}"`);
+        if (this.currentScene) this.currentScene.destroy();
+        const scene = new Scene();
+        init(scene, params);
+        scene.start();
+        this.currentScene = scene;
+      }
+    }
+
+    // =========================================================================
+    // boundsOverlap
+    // =========================================================================
+    function boundsOverlap(a, b) {
+      return a.maxX >= b.minX && a.minX <= b.maxX && a.maxY >= b.minY && a.minY <= b.maxY;
+    }
+
+    // =========================================================================
+    // Drawable — with local bounds and world AABB
+    // =========================================================================
+    class Drawable extends SceneNode {
+      constructor(params = {}) {
+        super();
+        this.zIndex  = params.zIndex  ?? 0;
+        this.camera  = params.camera  ?? null;
+        this.bounds       = null;
+        this._worldBounds = null;
+      }
+      recomputeWorldTransform() {
+        super.recomputeWorldTransform();
+        const b = this.bounds;
+        if (b === null) { this._worldBounds = null; return; }
+        const m = this._worldMatrix;
+        const c0 = m.transformPoint({ x: b.minX, y: b.minY });
+        const c1 = m.transformPoint({ x: b.maxX, y: b.minY });
+        const c2 = m.transformPoint({ x: b.minX, y: b.maxY });
+        const c3 = m.transformPoint({ x: b.maxX, y: b.maxY });
+        this._worldBounds = {
+          minX: Math.min(c0.x, c1.x, c2.x, c3.x), minY: Math.min(c0.y, c1.y, c2.y, c3.y),
+          maxX: Math.max(c0.x, c1.x, c2.x, c3.x), maxY: Math.max(c0.y, c1.y, c2.y, c3.y),
+        };
+      }
+      draw(ctx) {}
+    }
+
+    // =========================================================================
+    // Camera — with world-space AABB of visible area
+    // =========================================================================
+    class Camera extends SceneNode {
+      constructor(params) {
+        super();
+        this.viewport = params.viewport;
+        this.zoom     = params.zoom ?? 1;
+        this.up       = new Vector(0, -1);
+        this._projView    = new DOMMatrix();
+        this._invProjView = new DOMMatrix();
+        this._worldBounds = null;
+      }
+
+      recomputeWorldTransform() {
+        super.recomputeWorldTransform();
+        const pos   = this._worldPosition;
+        const up    = new Vector(-this.up.x, -this.up.y);
+        const right = new Vector(up.y, -up.x);
+        const z     = this.zoom;
+
+        const view = new DOMMatrix([z, 0, 0, z, 0, 0])
+          .multiply(new DOMMatrix([right.x, up.x, right.y, up.y, 0, 0]))
+          .multiply(new DOMMatrix([1, 0, 0, 1, -pos.x, -pos.y]));
+
+        const sx = 1 / this.viewport.width;
+        const sy = 1 / this.viewport.height;
+        const proj = new DOMMatrix([sx, 0, 0, sy, 0.5, 0.5]);
+
+        this._projView = proj.multiply(view);
+        this._invProjView = new DOMMatrix([1, 0, 0, 1, 0, 0]).multiply(this._projView);
+        this._invProjView.invertSelf();
+
+        // World-space AABB from the four screen corners
+        const corners = [[0,0],[1,0],[0,1],[1,1]].map(([nx,ny]) => {
+          const pt = this._invProjView.transformPoint({ x: nx, y: ny });
+          return { x: pt.x, y: pt.y };
+        });
+        this._worldBounds = {
+          minX: Math.min(...corners.map(c => c.x)),
+          minY: Math.min(...corners.map(c => c.y)),
+          maxX: Math.max(...corners.map(c => c.x)),
+          maxY: Math.max(...corners.map(c => c.y)),
+        };
+      }
+
+      getProjViewMatrix() { return this._projView; }
+
+      screenToWorld(normX, normY) {
+        const pt = this._invProjView.transformPoint({ x: normX, y: normY });
+        return new Vector(pt.x, pt.y);
+      }
+    }
+
+    // =========================================================================
+    // Renderer — with camera culling
+    // =========================================================================
+    class Renderer {
+      constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx    = canvas.getContext('2d');
+        this.clearColor = '#08080f';
+        this.lastDrawn  = 0;
+        this.lastCulled = 0;
+      }
+      render(drawables) {
+        if (this.clearColor) {
+          this.ctx.fillStyle = this.clearColor;
+          this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+        const layers = new Map();
+        const camMtx = new Map();
+        const W = this.canvas.width, H = this.canvas.height;
+        const screenM = new DOMMatrix([W, 0, 0, H, 0, 0]);
+
+        for (const d of drawables) {
+          const key = `${d.zIndex}:${d.camera?.id ?? ''}`;
+          if (!layers.has(key)) layers.set(key, { zIndex: d.zIndex, drawables: [] });
+          layers.get(key).drawables.push(d);
+          if (d.camera && !camMtx.has(d.camera.id)) {
+            camMtx.set(d.camera.id, screenM.multiply(d.camera.getProjViewMatrix()));
+          }
+        }
+
+        let drawn = 0, culled = 0;
+        for (const layer of [...layers.values()].sort((a, b) => a.zIndex - b.zIndex)) {
+          for (const d of layer.drawables) {
+            const cam = d.camera;
+            if (cam && d._worldBounds && cam._worldBounds) {
+              if (!boundsOverlap(d._worldBounds, cam._worldBounds)) { culled++; continue; }
+            }
+            this.ctx.setTransform(cam ? camMtx.get(cam.id).multiply(d._worldMatrix) : d._worldMatrix);
+            d.draw(this.ctx);
+            drawn++;
+          }
+        }
+        this.ctx.resetTransform();
+        this.lastDrawn  = drawn;
+        this.lastCulled = culled;
+      }
+    }
+
+    // =========================================================================
+    // Built-in drawables
+    // =========================================================================
+    class CircleDrawable extends Drawable {
+      constructor(params = {}) {
+        super(params);
+        this.radius      = params.radius      ?? 20;
+        this.fillColor   = params.fillColor   ?? null;
+        this.strokeColor = params.strokeColor ?? null;
+        this.lineWidth   = params.lineWidth   ?? 1;
+        this.bounds = { minX: -this.radius, minY: -this.radius, maxX: this.radius, maxY: this.radius };
+      }
+      draw(ctx) {
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        if (this.fillColor)   { ctx.fillStyle   = this.fillColor;   ctx.fill();   }
+        if (this.strokeColor) { ctx.strokeStyle = this.strokeColor; ctx.lineWidth = this.lineWidth; ctx.stroke(); }
+      }
+    }
+
+    class RectDrawable extends Drawable {
+      constructor(params = {}) {
+        super(params);
+        this.width       = params.width       ?? 40;
+        this.height      = params.height      ?? 40;
+        this.fillColor   = params.fillColor   ?? null;
+        this.strokeColor = params.strokeColor ?? null;
+        this.lineWidth   = params.lineWidth   ?? 1;
+        this.bounds = { minX: -this.width/2, minY: -this.height/2, maxX: this.width/2, maxY: this.height/2 };
+      }
+      draw(ctx) {
+        ctx.beginPath();
+        ctx.rect(-this.width/2, -this.height/2, this.width, this.height);
+        if (this.fillColor)   { ctx.fillStyle   = this.fillColor;   ctx.fill();   }
+        if (this.strokeColor) { ctx.strokeStyle = this.strokeColor; ctx.lineWidth = this.lineWidth; ctx.stroke(); }
+      }
+    }
+
+    // =========================================================================
+    // MinimapDrawable — screen-space overlay for Demo 2
+    // Shows every world object as a dot: green = in view, pink = culled.
+    // Draws the camera viewport rectangle on top.
+    // No camera assigned → renders in pixel space, never culled.
+    // =========================================================================
+    class MinimapDrawable extends Drawable {
+      constructor(params = {}) {
+        super({ zIndex: 99 }); // no camera — screen-space, always on top
+        this.worldObjects = params.worldObjects ?? [];
+        this.cam          = params.cam ?? null;
+        this.worldW       = params.worldW ?? 1800;
+        this.worldH       = params.worldH ?? 1400;
+        // Position on canvas (pixels)
+        this.mmX = params.mmX ?? 390;
+        this.mmY = params.mmY ?? 10;
+        this.mmW = params.mmW ?? 160;
+        this.mmH = params.mmH ?? 120;
+      }
+
+      draw(ctx) {
+        const { mmX, mmY, mmW, mmH, worldW, worldH, worldObjects, cam } = this;
+        const hw = worldW / 2, hh = worldH / 2;
+        const tx = wx => mmX + (wx + hw) / worldW * mmW;
+        const ty = wy => mmY + (wy + hh) / worldH * mmH;
+
+        // Background panel
+        ctx.fillStyle = 'rgba(8,8,15,0.85)';
+        ctx.fillRect(mmX, mmY, mmW, mmH);
+        ctx.strokeStyle = '#2a2a45';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(mmX, mmY, mmW, mmH);
+
+        // Draw each world object as a dot
+        const camBounds = cam ? cam._worldBounds : null;
+        for (const d of worldObjects) {
+          if (!d._worldPosition) continue;
+          const inView = camBounds && d._worldBounds
+            ? boundsOverlap(d._worldBounds, camBounds)
+            : true;
+          ctx.beginPath();
+          ctx.arc(tx(d._worldPosition.x), ty(d._worldPosition.y), 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = inView ? '#4ade80' : 'rgba(247,37,133,0.7)';
+          ctx.fill();
+        }
+
+        // Camera viewport rectangle
+        if (camBounds) {
+          const rx  = Math.max(mmX,        tx(camBounds.minX));
+          const ry  = Math.max(mmY,        ty(camBounds.minY));
+          const rx2 = Math.min(mmX + mmW,  tx(camBounds.maxX));
+          const ry2 = Math.min(mmY + mmH,  ty(camBounds.maxY));
+          const rw  = rx2 - rx;
+          const rh  = ry2 - ry;
+          ctx.fillStyle   = 'rgba(76,201,240,0.07)';
+          ctx.fillRect(rx, ry, rw, rh);
+          ctx.strokeStyle = '#4cc9f0';
+          ctx.lineWidth   = 1.5;
+          // Inset by lineWidth/2 so the stroke outer edge stays within the clamped rect
+          ctx.strokeRect(rx + 0.75, ry + 0.75, Math.max(0, rw - 1.5), Math.max(0, rh - 1.5));
+        }
+
+        // Label row
+        ctx.font      = '9px Consolas, monospace';
+        ctx.fillStyle = '#4cc9f0';
+        ctx.fillText('minimap', mmX + 5, mmY + mmH - 5);
+        // Legend dots
+        ctx.beginPath(); ctx.arc(mmX + mmW - 52, mmY + mmH - 5.5, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#4ade80'; ctx.fill();
+        ctx.fillStyle = '#4ade80';
+        ctx.fillText('in view', mmX + mmW - 46, mmY + mmH - 2);
+      }
+    }
+
+    // =========================================================================
+    // Minimal input: pointer joystick for Demo 2 camera panning
+    // =========================================================================
+    class PointerJoystick {
+      constructor(canvas) {
+        this.canvas    = canvas;
+        this.active    = false;
+        this.pointerId = null;
+        this.origin    = new Vector(0, 0);
+        this.vec       = new Vector(0, 0);
+        this.radius    = 55;
+        // Fixed position: bottom-left quarter of canvas
+        this.cx = 90;
+        this.cy = canvas.height - 90;
+
+        canvas.style.touchAction = 'none';
+        this._onDown   = e => this._start(e);
+        this._onMove   = e => this._move(e);
+        this._onUp     = e => this._end(e);
+        canvas.addEventListener('pointerdown',   this._onDown);
+        canvas.addEventListener('pointermove',   this._onMove);
+        canvas.addEventListener('pointerup',     this._onUp);
+        canvas.addEventListener('pointercancel', this._onUp);
+      }
+      _px(e) {
+        const r = this.canvas.getBoundingClientRect();
+        return {
+          x: (e.clientX - r.left) / r.width  * this.canvas.width,
+          y: (e.clientY - r.top)  / r.height * this.canvas.height,
+        };
+      }
+      _start(e) {
+        if (this.pointerId !== null) return;
+        const p = this._px(e);
+        const dx = p.x - this.cx, dy = p.y - this.cy;
+        if (dx*dx + dy*dy > this.radius * this.radius) return;
+        this.canvas.setPointerCapture(e.pointerId);
+        this.pointerId = e.pointerId;
+        this.active    = true;
+        this.origin.set(p.x, p.y);
+        this._update(p);
+      }
+      _move(e) {
+        if (e.pointerId !== this.pointerId) return;
+        this._update(this._px(e));
+      }
+      _end(e) {
+        if (e.pointerId !== this.pointerId) return;
+        this.active    = false;
+        this.pointerId = null;
+        this.vec.set(0, 0);
+      }
+      _update(p) {
+        const dx = p.x - this.cx, dy = p.y - this.cy;
+        const len = Math.sqrt(dx*dx + dy*dy);
+        if (len > 0) {
+          const t = Math.min(len, this.radius) / this.radius;
+          this.vec.set((dx/len)*t, (dy/len)*t);
+        } else {
+          this.vec.set(0, 0);
+        }
+      }
+      destroy() {
+        this.canvas.removeEventListener('pointerdown',   this._onDown);
+        this.canvas.removeEventListener('pointermove',   this._onMove);
+        this.canvas.removeEventListener('pointerup',     this._onUp);
+        this.canvas.removeEventListener('pointercancel', this._onUp);
+      }
+      draw(ctx) {
+        const r  = this.radius;
+        const nr = 18;
+        ctx.beginPath();
+        ctx.arc(this.cx, this.cy, r, 0, Math.PI * 2);
+        ctx.fillStyle   = 'rgba(255,255,255,0.04)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        ctx.lineWidth   = 2;
+        ctx.stroke();
+        const nx = this.cx + this.vec.x * (r - nr);
+        const ny = this.cy + this.vec.y * (r - nr);
+        ctx.beginPath();
+        ctx.arc(nx, ny, nr, 0, Math.PI * 2);
+        ctx.fillStyle   = this.active ? 'rgba(76,201,240,0.65)' : 'rgba(255,255,255,0.28)';
+        ctx.fill();
+        ctx.strokeStyle = this.active ? '#4cc9f0' : 'rgba(255,255,255,0.2)';
+        ctx.lineWidth   = 1.5;
+        ctx.stroke();
+      }
+    }
+
+    // =========================================================================
+    // Global setup
+    // =========================================================================
+    const canvas   = document.getElementById('canvas');
+    const renderer = new Renderer(canvas);
+    const sm       = new SceneManager();
+
+    // Keyboard state for WASD in demo 2
+    const keys = {};
+    window.addEventListener('keydown', e => {
+      keys[e.code] = true;
+      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+    });
+    window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+    // =========================================================================
+    // Demo 0 — Parenting
+    // =========================================================================
+    let moonDetached  = false;
+    let d0SunNode     = null;
+    let d0EarthNode   = null;
+    let d0MoonNode    = null;
+    let d0MarsNode    = null;
+
+    sm.register('parenting', scene => {
+      moonDetached = false;
+      document.getElementById('btn-detach').textContent = 'Detach moon';
+      document.getElementById('btn-detach').classList.remove('on');
+
+      const cam = new Camera({ viewport: { width: 560, height: 420 }, zoom: 1 });
+      scene.addNode(cam);
+
+      // Grid
+      for (let x = -560; x <= 560; x += 60) {
+        const g = new RectDrawable({ width: 1, height: 1400, fillColor: '#0e0e22', zIndex: -2, camera: cam });
+        g.position.set(x, 0); scene.addNode(g);
+      }
+      for (let y = -420; y <= 420; y += 60) {
+        const g = new RectDrawable({ width: 1400, height: 1, fillColor: '#0e0e22', zIndex: -2, camera: cam });
+        g.position.set(0, y); scene.addNode(g);
+      }
+
+      // Sun pivot — rotates and carries Earth + Mars
+      const sunPivot = new SceneNode();
+      sunPivot.update = dt => { sunPivot.angle += 0.18 * dt; };
+      scene.addNode(sunPivot);
+      d0SunNode = sunPivot;
+
+      // Sun visual
+      const sunVis = new CircleDrawable({ radius: 24, fillColor: '#fbbf24', strokeColor: '#f59e0b', lineWidth: 2, zIndex: 1, camera: cam });
+      scene.addNode(sunVis);
+
+      // Earth orbit pivot (child of sun pivot)
+      const earthPivot = new SceneNode();
+      earthPivot.setParent(sunPivot);
+      earthPivot.angle = 0.8;
+      earthPivot.update = dt => { earthPivot.angle += 0.6 * dt; };
+      scene.addNode(earthPivot);
+
+      // Earth visual (child of earthPivot, local offset = orbital radius)
+      const earthVis = new CircleDrawable({ radius: 10, fillColor: '#4cc9f0', strokeColor: '#0ea5e9', lineWidth: 1.5, zIndex: 1, camera: cam });
+      earthVis.position.set(130, 0);
+      earthVis.setParent(earthPivot);
+      scene.addNode(earthVis);
+
+      // Moon orbit pivot (child of earthVis)
+      const moonPivot = new SceneNode();
+      moonPivot.setParent(earthVis);
+      moonPivot.update = dt => { moonPivot.angle += 2.0 * dt; };
+      scene.addNode(moonPivot);
+
+      // Moon visual
+      const moonVis = new CircleDrawable({ radius: 5, fillColor: '#a78bfa', strokeColor: '#8b5cf6', lineWidth: 1, zIndex: 1, camera: cam });
+      moonVis.position.set(38, 0);
+      moonVis.setParent(moonPivot);
+      scene.addNode(moonVis);
+      d0EarthNode = earthVis;
+      d0MoonNode  = moonVis;
+
+      // Mars orbit pivot (child of sun pivot)
+      const marsPivot = new SceneNode();
+      marsPivot.setParent(sunPivot);
+      marsPivot.angle = 2.4;
+      marsPivot.update = dt => { marsPivot.angle += 0.35 * dt; };
+      scene.addNode(marsPivot);
+
+      const marsVis = new CircleDrawable({ radius: 8, fillColor: '#fb923c', strokeColor: '#ea580c', lineWidth: 1.5, zIndex: 1, camera: cam });
+      marsVis.position.set(-168, 0);
+      marsVis.setParent(marsPivot);
+      scene.addNode(marsVis);
+      d0MarsNode = marsVis;
+
+      // Orbit ring hints
+      const orbitE = new (class extends Drawable {
+        constructor() { super({ zIndex: 0, camera: cam }); }
+        draw(ctx) {
+          ctx.beginPath(); ctx.arc(0, 0, 130, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1; ctx.stroke();
+        }
+      })();
+      scene.addNode(orbitE);
+
+      const orbitM = new (class extends Drawable {
+        constructor() { super({ zIndex: 0, camera: cam }); }
+        draw(ctx) {
+          ctx.beginPath(); ctx.arc(0, 0, 168, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1; ctx.stroke();
+        }
+      })();
+      scene.addNode(orbitM);
+    });
+
+    document.getElementById('btn-detach').addEventListener('click', () => {
+      if (!d0MoonNode) return;
+      if (!moonDetached) {
+        d0MoonNode.setParent(null, true);
+        moonDetached = true;
+        document.getElementById('btn-detach').textContent = 'Re-attach moon';
+        document.getElementById('btn-detach').classList.add('on');
+        document.getElementById('p0-parent').textContent = 'none';
+      } else {
+        // Re-attach to the scene (via scene addNode) — for simplicity just re-switch
+        sm.switchScene('parenting');
+      }
+    });
+
+    // =========================================================================
+    // Demo 1 — Static Nodes
+    // =========================================================================
+    const TILE_COUNT = 48;
+    const DYN_COUNT  = 6;
+    let staticOptimised = false;
+    let staticTiles = [];
+    let dynNodes    = [];
+
+    sm.register('static-nodes', scene => {
+      staticOptimised = false;
+      staticTiles = [];
+      dynNodes    = [];
+      document.getElementById('btn-static').textContent = 'Enable static';
+      document.getElementById('btn-static').classList.remove('on');
+
+      const cam = new Camera({ viewport: { width: 560, height: 420 }, zoom: 1 });
+      scene.addNode(cam);
+
+      // 48 static background tiles in a grid
+      const cols = 8, rows = 6;
+      const tw = 560 / cols, th = 420 / rows;
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const tile = new RectDrawable({
+            width: tw - 3, height: th - 3,
+            fillColor: `hsl(${(col + row) * 22},18%,12%)`,
+            strokeColor: '#1a1a35', lineWidth: 1,
+            zIndex: 0, camera: cam,
+          });
+          // Convert canvas pixel position to world coords (cam at 0,0, viewport=canvas size)
+          tile.position.set(
+            -280 + col * tw + tw / 2,
+            -210 + row * th + th / 2
+          );
+          scene.addNode(tile);
+          staticTiles.push(tile);
+        }
+      }
+
+      // 6 dynamic animated stars
+      const starColors = ['#4cc9f0','#f72585','#4ade80','#fbbf24','#a78bfa','#fb923c'];
+      for (let i = 0; i < DYN_COUNT; i++) {
+        const star = new (class extends Drawable {
+          constructor(idx) {
+            super({ zIndex: 2, camera: cam });
+            this._idx   = idx;
+            this._phase = (idx / DYN_COUNT) * Math.PI * 2;
+            this._t     = this._phase;
+            this.radius = 10 + idx * 3;
+            this._color = starColors[idx];
+            this.bounds = { minX: -this.radius, minY: -this.radius, maxX: this.radius, maxY: this.radius };
+          }
+          update(dt) {
+            this._t += dt * (0.6 + this._idx * 0.25);
+            this.position.set(
+              Math.cos(this._t) * (60 + this._idx * 28),
+              Math.sin(this._t * 0.7 + this._phase) * (40 + this._idx * 16)
+            );
+            this.angle += dt * (0.8 + this._idx * 0.3);
+          }
+          draw(ctx) {
+            ctx.beginPath();
+            ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = this._color + '99';
+            ctx.fill();
+            ctx.strokeStyle = this._color;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            // Cross
+            const s = this.radius * 0.5;
+            ctx.beginPath();
+            ctx.moveTo(-s, 0); ctx.lineTo(s, 0);
+            ctx.moveTo(0, -s); ctx.lineTo(0, s);
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+        })(i);
+        scene.addNode(star);
+        dynNodes.push(star);
+      }
+    });
+
+    document.getElementById('btn-static').addEventListener('click', () => {
+      staticOptimised = !staticOptimised;
+      for (const tile of staticTiles) {
+        tile.matrixAutoUpdate = !staticOptimised;
+        // When disabling auto-update, the cache is already fresh from the last frame.
+        // No need to call recomputeWorldTransform() — it was just called this frame.
+      }
+      document.getElementById('btn-static').textContent = staticOptimised ? 'Disable static' : 'Enable static';
+      document.getElementById('btn-static').classList.toggle('on', staticOptimised);
+    });
+
+    // =========================================================================
+    // Demo 2 — Camera Culling
+    // =========================================================================
+    const CULL_OBJ_COUNT = 80;
+    let cullJoystick = null;
+    let cullCam      = null;
+
+    sm.register('culling', scene => {
+      if (cullJoystick) { cullJoystick.destroy(); cullJoystick = null; }
+
+      const cam = new Camera({ viewport: { width: 560, height: 420 }, zoom: 1 });
+      cam.position.set(0, 0);
+      scene.addNode(cam);
+      cullCam = cam;
+
+      // 80 objects scattered in a 2000×1600 world
+      const palette = ['#e94560','#11a070','#e9a020','#5030b0','#4cc9f0','#d040c0','#4ade80','#fbbf24'];
+      const cullObjects = [];
+      for (let i = 0; i < CULL_OBJ_COUNT; i++) {
+        const wx = (Math.random() - 0.5) * 1800;
+        const wy = (Math.random() - 0.5) * 1400;
+        const r  = 12 + Math.random() * 20;
+        const c  = palette[i % palette.length];
+        const obj = new CircleDrawable({
+          radius: r, fillColor: c + 'aa', strokeColor: c, lineWidth: 1.5,
+          zIndex: 1, camera: cam,
+        });
+        obj.position.set(wx, wy);
+        scene.addNode(obj);
+        cullObjects.push(obj);
+      }
+
+      // Minimap overlay — screen-space, no camera
+      const minimap = new MinimapDrawable({
+        worldObjects: cullObjects,
+        cam: cam,
+        worldW: 1800, worldH: 1400,
+        mmX: 390, mmY: 10, mmW: 160, mmH: 120,
+      });
+      scene.addNode(minimap);
+
+      // Background grid to make the world extent obvious
+      const step = 200;
+      for (let x = -1000; x <= 1000; x += step) {
+        const g = new RectDrawable({ width: 1, height: 2400, fillColor: '#111126', zIndex: -1, camera: cam });
+        g.position.set(x, 0); scene.addNode(g);
+      }
+      for (let y = -800; y <= 800; y += step) {
+        const g = new RectDrawable({ width: 2200, height: 1, fillColor: '#111126', zIndex: -1, camera: cam });
+        g.position.set(0, y); scene.addNode(g);
+      }
+
+      // Camera controller node
+      const camCtrl = new SceneNode();
+      camCtrl.update = function(dt) {
+        const speed = 280;
+        let mx = 0, my = 0;
+        if (keys['KeyA'] || keys['ArrowLeft'])  mx -= 1;
+        if (keys['KeyD'] || keys['ArrowRight']) mx += 1;
+        if (keys['KeyW'] || keys['ArrowUp'])    my -= 1;
+        if (keys['KeyS'] || keys['ArrowDown'])  my += 1;
+        if (cullJoystick && cullJoystick.active) {
+          mx += cullJoystick.vec.x;
+          my += cullJoystick.vec.y;
+        }
+        const len = Math.sqrt(mx*mx + my*my);
+        if (len > 1) { mx /= len; my /= len; }
+        cam.position.x += mx * speed * dt;
+        cam.position.y += my * speed * dt;
+        cam.position.x = Math.max(-900, Math.min(900, cam.position.x));
+        cam.position.y = Math.max(-700, Math.min(700, cam.position.y));
+      };
+      scene.addNode(camCtrl);
+
+      // Joystick for mobile — created fresh per scene
+      cullJoystick = new PointerJoystick(canvas);
+    });
+
+    // D-pad HTML buttons for culling demo
+    function simKey(code, down) {
+      const e = new KeyboardEvent(down ? 'keydown' : 'keyup', { code, bubbles: true, cancelable: true });
+      window.dispatchEvent(e);
+    }
+    function bindBtn(id, code) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const on  = () => { simKey(code, true);  el.classList.add('held'); };
+      const off = () => { simKey(code, false); el.classList.remove('held'); };
+      el.addEventListener('pointerdown',   on);
+      el.addEventListener('pointerup',     off);
+      el.addEventListener('pointercancel', off);
+      el.addEventListener('pointerleave',  off);
+    }
+    bindBtn('btn-cu', 'ArrowUp');
+    bindBtn('btn-cd', 'ArrowDown');
+    bindBtn('btn-cl', 'ArrowLeft');
+    bindBtn('btn-cr', 'ArrowRight');
+
+    // =========================================================================
+    // Demo switching
+    // =========================================================================
+    function setDemo(i) {
+      document.querySelectorAll('.tab').forEach((t, idx) => t.classList.toggle('active', idx === i));
+      document.querySelectorAll('.info').forEach((p, idx) => p.style.display = idx === i ? '' : 'none');
+      document.getElementById('ctrl-bar-0').style.display = i === 0 ? '' : 'none';
+      document.getElementById('ctrl-bar-1').style.display = i === 1 ? '' : 'none';
+      document.getElementById('ctrl-bar-2').style.display = i === 2 ? '' : 'none';
+      if (cullJoystick) { cullJoystick.destroy(); cullJoystick = null; }
+      const scenes = ['parenting', 'static-nodes', 'culling'];
+      sm.switchScene(scenes[i]);
+    }
+
+    sm.switchScene('parenting');
+
+    // =========================================================================
+    // Main loop
+    // =========================================================================
+    let lastTime = 0;
+
+    function loop(ts) {
+      const dt = Math.min((ts - lastTime) / 1000, 0.05);
+      lastTime = ts;
+
+      sm.update(dt);
+      const drawables = sm.currentScene.findNodesByType(Drawable);
+      renderer.render(drawables);
+
+      // Draw joystick overlay for demo 2
+      if (cullJoystick) {
+        renderer.ctx.resetTransform();
+        cullJoystick.draw(renderer.ctx);
+      }
+
+      // HUD — Panel 0 (parenting)
+      if (d0EarthNode && d0MoonNode && d0MarsNode) {
+        const ep = d0EarthNode._worldPosition;
+        const mp = d0MoonNode._worldPosition;
+        const rp = d0MarsNode._worldPosition;
+        document.getElementById('p0-sun').textContent   = '(0, 0)';
+        document.getElementById('p0-earth').textContent = `(${ep.x.toFixed(0)}, ${ep.y.toFixed(0)})`;
+        document.getElementById('p0-moon').textContent  = `(${mp.x.toFixed(0)}, ${mp.y.toFixed(0)})${moonDetached ? ' [free]' : ''}`;
+        document.getElementById('p0-mars').textContent  = `(${rp.x.toFixed(0)}, ${rp.y.toFixed(0)})`;
+        document.getElementById('p0-parent').textContent = moonDetached ? 'none' : 'earth';
+      }
+
+      // HUD — Panel 1 (static nodes)
+      {
+        const total = sm.currentScene ? sm.currentScene.nodes.length : 0;
+        document.getElementById('p1-total').textContent = String(total);
+        document.getElementById('p1-count').textContent = String(SceneNode._recomputeCount);
+        document.getElementById('p1-opt').textContent   = staticOptimised ? 'on' : 'off';
+        document.getElementById('p1-static').textContent = String(staticTiles.length);
+      }
+
+      // HUD — Panel 2 (culling)
+      {
+        document.getElementById('p2-drawn').textContent  = String(renderer.lastDrawn);
+        document.getElementById('p2-culled').textContent = String(renderer.lastCulled);
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(loop); });
+  </script>
+
+</body>
+</html>

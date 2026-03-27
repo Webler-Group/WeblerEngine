@@ -24,6 +24,19 @@ class Drawable extends SceneNode {
      * @type {Camera | null}
      */
     camera;
+    /**
+     * Local-space AABB used for frustum culling. Set to match the drawable's
+     * visual extents in local space (centered at (0,0) for built-in shapes).
+     * Set to null to disable culling for this drawable.
+     * @type {Bounds | null}
+     */
+    bounds = null;
+    /**
+     * World-space AABB derived from bounds each frame inside
+     * recomputeWorldTransform(). Read by Renderer to skip off-screen drawables.
+     * @type {Bounds | null}
+     */
+    _worldBounds = null;
 
     /**
      * @param {DrawableParams} params
@@ -32,6 +45,21 @@ class Drawable extends SceneNode {
         super();
         this.zIndex = params.zIndex ?? 0;
         this.camera = params.camera ?? null;
+    }
+
+    recomputeWorldTransform() {
+        super.recomputeWorldTransform();
+        const b = this.bounds;
+        if (b === null) { this._worldBounds = null; return; }
+        const m = this._worldMatrix;
+        const c0 = m.transformPoint({ x: b.minX, y: b.minY });
+        const c1 = m.transformPoint({ x: b.maxX, y: b.minY });
+        const c2 = m.transformPoint({ x: b.minX, y: b.maxY });
+        const c3 = m.transformPoint({ x: b.maxX, y: b.maxY });
+        this._worldBounds = {
+            minX: Math.min(c0.x, c1.x, c2.x, c3.x), minY: Math.min(c0.y, c1.y, c2.y, c3.y),
+            maxX: Math.max(c0.x, c1.x, c2.x, c3.x), maxY: Math.max(c0.y, c1.y, c2.y, c3.y),
+        };
     }
 
     /**
@@ -101,6 +129,7 @@ class RectDrawable extends Drawable {
         this.fillColor = params.fillColor;
         this.strokeColor = params.strokeColor ?? null;
         this.lineWidth = params.lineWidth ?? 1;
+        this.bounds = { minX: -this.width / 2, minY: -this.height / 2, maxX: this.width / 2, maxY: this.height / 2 };
     }
 
     /**
@@ -172,6 +201,7 @@ class CircleDrawable extends Drawable {
         this.fillColor = params.fillColor;
         this.strokeColor = params.strokeColor ?? null;
         this.lineWidth = params.lineWidth ?? 1;
+        this.bounds = { minX: -this.radius, minY: -this.radius, maxX: this.radius, maxY: this.radius };
     }
 
     /**
@@ -276,23 +306,29 @@ class Spritesheet {
     /**
      * Returns the source rectangle on the atlas image for the given frame index.
      *
-     * @param {number} frame  0-based frame index
+     * spanCols and spanRows allow a single logical sprite to cover multiple
+     * cells in the grid. Spacing between spanned cells is included in the
+     * returned dimensions.
+     *
+     * @param {number} frame      0-based frame index
+     * @param {number} spanCols   number of columns this sprite spans (default 1)
+     * @param {number} spanRows   number of rows this sprite spans (default 1)
      * @returns {SpriteRegion}
      */
-    getRegion(frame) {
+    getRegion(frame, spanCols = 1, spanRows = 1) {
         const col = frame % this.columns;
         const row = Math.floor(frame / this.columns);
         return {
             x: this.margin + col * (this.spriteWidth + this.spacing),
             y: this.margin + row * (this.spriteHeight + this.spacing),
-            width: this.spriteWidth,
-            height: this.spriteHeight,
+            width:  this.spriteWidth  * spanCols + this.spacing * (spanCols - 1),
+            height: this.spriteHeight * spanRows + this.spacing * (spanRows - 1),
         };
     }
 }
 
 /**
- * @typedef {{ sheet: Spritesheet, region?: SpriteRegion } & DrawableParams} SpriteParams
+ * @typedef {{ sheet: Spritesheet, region?: SpriteRegion, width?: number, height?: number } & DrawableParams} SpriteParams
  */
 
 /**
@@ -316,6 +352,18 @@ class Sprite extends Drawable {
      * @type {SpriteRegion}
      */
     region;
+    /**
+     * Width of the sprite in local units. Used for both draw destination size
+     * and culling bounds. Defaults to the sheet's spriteWidth.
+     * @type {number}
+     */
+    width;
+    /**
+     * Height of the sprite in local units. Used for both draw destination size
+     * and culling bounds. Defaults to the sheet's spriteHeight.
+     * @type {number}
+     */
+    height;
 
     /**
      * @param {SpriteParams} params
@@ -324,10 +372,13 @@ class Sprite extends Drawable {
         super(params);
         this.sheet = params.sheet;
         this.region = params.region ?? params.sheet.getRegion(0);
+        this.width  = params.width  ?? params.sheet.spriteWidth;
+        this.height = params.height ?? params.sheet.spriteHeight;
+        this.bounds = { minX: -this.width / 2, minY: -this.height / 2, maxX: this.width / 2, maxY: this.height / 2 };
     }
 
     /**
-     * Draws region from the sheet, centered at (0, 0) in local space.
+     * Draws region from the sheet centered at (0, 0), scaled to width × height.
      *
      * @param {CanvasRenderingContext2D} ctx
      */
@@ -336,7 +387,7 @@ class Sprite extends Drawable {
         ctx.drawImage(
             this.sheet.image,
             r.x, r.y, r.width, r.height,
-            -r.width / 2, -r.height / 2, r.width, r.height,
+            -this.width / 2, -this.height / 2, this.width, this.height,
         );
     }
 }
@@ -493,7 +544,7 @@ class Camera extends SceneNode {
      *
      * Defaults to `(0, -1)`, which matches canvas convention (Y increases
      * downward). Set to `(0, 1)` for a Y-up world. The vector does not need to
-     * be normalized — it is re-normalized internally by `update()`.
+     * be normalized — it is re-normalized internally.
      * @type {Vector}
      */
     up;
@@ -516,24 +567,23 @@ class Camera extends SceneNode {
      */
     zoom;
 
-    /** 
-     * @type {DOMMatrix} 
-     */
+    /** @type {DOMMatrix} */
     _view;
-    /** 
-     * @type {DOMMatrix} 
-     */
+    /** @type {DOMMatrix} */
     _proj;
-    /** 
-     * @type {DOMMatrix} 
-     */
+    /** @type {DOMMatrix} */
     _projView;
-    /**
-     * @type {DOMMatrix}
-     */
+    /** @type {DOMMatrix} */
     _invProjView;
     /**
-     * Scratch matrix reused each frame for T, R, Z — never read outside update().
+     * World-space AABB of the camera's visible area. Computed each frame in
+     * recomputeWorldTransform() from the four screen corners. Used by Renderer
+     * to cull drawables outside the camera's view.
+     * @type {Bounds | null}
+     */
+    _worldBounds = null;
+    /**
+     * Scratch matrix reused each frame for T, R, Z — never read outside updateWorldTransform().
      * @type {DOMMatrix}
      */
     _temp;
@@ -556,14 +606,19 @@ class Camera extends SceneNode {
     }
 
     /**
-     * Rebuilds all cached matrices. Called automatically every frame via
-     * `update()`. Projection is computed in normalised 1×1 screen space;
-     * multiply by a screen-scale matrix ([W,0,0,H,0,0]) to get pixel coords.
+     * Recomputes the node's world transform then rebuilds all camera matrices
+     * from the fresh world position and orientation.
      *
-     * @param {number} dt
+     * Overrides SceneNode.recomputeWorldTransform() so camera matrices stay in
+     * sync whenever the base transform is refreshed — both during the automatic
+     * scene traversal and on a manual recomputeWorldTransform() call.
+     *
+     * Projection is computed in normalised 1×1 screen space; multiply by a
+     * screen-scale matrix ([W,0,0,H,0,0]) to get pixel coords.
      */
-    update(dt) {
-        const pos = this.getWorldPosition();
+    recomputeWorldTransform() {
+        super.recomputeWorldTransform();
+
         const up = new Vector(-this.up.x, -this.up.y);
         const right = new Vector(up.y, -up.x);
 
@@ -571,7 +626,7 @@ class Camera extends SceneNode {
         matIdentity(this._view)
             .multiplySelf(setMatrix(this._temp, z, 0, 0, z, 0, 0))
             .multiplySelf(setMatrix(this._temp, right.x, up.x, right.y, up.y, 0, 0))
-            .multiplySelf(setMatrix(this._temp, 1, 0, 0, 1, -pos.x, -pos.y));
+            .multiplySelf(setMatrix(this._temp, 1, 0, 0, 1, -this._worldPosition.x, -this._worldPosition.y));
 
         const scaleX = 1 / this.viewport.width;
         const scaleY = 1 / this.viewport.height;
@@ -581,6 +636,15 @@ class Camera extends SceneNode {
 
         matIdentity(this._projView).multiplySelf(this._proj).multiplySelf(this._view);
         matIdentity(this._invProjView).multiplySelf(this._projView).invertSelf();
+
+        const c0 = this.screenToWorld(0, 0);
+        const c1 = this.screenToWorld(1, 0);
+        const c2 = this.screenToWorld(0, 1);
+        const c3 = this.screenToWorld(1, 1);
+        this._worldBounds = {
+            minX: Math.min(c0.x, c1.x, c2.x, c3.x), minY: Math.min(c0.y, c1.y, c2.y, c3.y),
+            maxX: Math.max(c0.x, c1.x, c2.x, c3.x), maxY: Math.max(c0.y, c1.y, c2.y, c3.y),
+        };
     }
 
     /** @returns {DOMMatrix} Cached view matrix (world → camera space). */
@@ -607,7 +671,7 @@ class Camera extends SceneNode {
      *   normX = pixelX / canvas.width
      *   normY = pixelY / canvas.height
      *
-     * Uses the cached inverse of (proj × view) — free after `update()` runs.
+     * Uses the cached inverse of (proj × view) — free after updateWorldTransform() runs.
      *
      * @param {number} normX  X in normalised screen space [0, 1].
      * @param {number} normY  Y in normalised screen space [0, 1].
@@ -694,6 +758,12 @@ class ButtonDrawable extends Drawable {
         this.text = params.text ?? null;
         this.textColor = params.textColor ?? "rgba(255,255,255,0.9)";
         this.font = params.font ?? "bold 14px sans-serif";
+        if (this.button.shape === 'circle') {
+            const r = this.button.radius;
+            this.bounds = { minX: -r, minY: -r, maxX: r, maxY: r };
+        } else {
+            this.bounds = { minX: -this.button.width / 2, minY: -this.button.height / 2, maxX: this.button.width / 2, maxY: this.button.height / 2 };
+        }
     }
 
     /**
@@ -788,6 +858,8 @@ class JoystickDrawable extends Drawable {
         this.stickColor = params.stickColor ?? "rgba(255,255,255,0.45)";
         this.strokeColor = params.strokeColor ?? "rgba(255,255,255,0.35)";
         this.lineWidth = params.lineWidth ?? 2;
+        const r = this.joystick.radius + this.stickRadius;
+        this.bounds = { minX: -r, minY: -r, maxX: r, maxY: r };
     }
 
     /**
@@ -922,6 +994,10 @@ class Renderer {
 
         for (const layer of [...layers.values()].sort((a, b) => a.zIndex - b.zIndex)) {
             for (const drawable of layer.drawables) {
+                const cam = drawable.camera;
+                if (cam !== null && drawable._worldBounds !== null && cam._worldBounds !== null) {
+                    if (!boundsOverlap(drawable._worldBounds, cam._worldBounds)) continue;
+                }
                 this.ctx.setTransform(this._computeMatrix(drawable, cameraMatrices));
                 drawable.draw(this.ctx);
             }
@@ -931,9 +1007,8 @@ class Renderer {
     }
 
     /**
-     * Builds the 2D affine matrix for a drawable's world transform.
-     * Combines world position, rotation, and scale into a single DOMMatrix
-     * so the renderer can apply all three in one setTransform call.
+     * Returns the final DOMMatrix for a drawable, combining its cached world
+     * matrix with the camera matrix if the drawable is assigned to a camera.
      *
      * Matrix layout (column-major, homogeneous 2D):
      *   | a  c  e |   | sx·cos  -sy·sin  tx |
@@ -945,24 +1020,10 @@ class Renderer {
      * @returns {DOMMatrix}
      */
     _computeMatrix(drawable, cameraMatrices) {
-        const pos = drawable.getWorldPosition();
-        const angle = drawable.getWorldAngle();
-        const scale = drawable.getWorldScale();
-        const cos = Math.cos(angle);
-        const sin = Math.sin(angle);
-        const transformMatrix = new DOMMatrix([
-            scale.x * cos,   // a
-            scale.x * sin,   // b
-            -scale.y * sin,  // c
-            scale.y * cos,   // d
-            pos.x,           // e (tx)
-            pos.y,           // f (ty)
-        ]);
         if (drawable.camera !== null) {
-            const camKey = drawable.camera.id;
-            return cameraMatrices.get(camKey).multiply(transformMatrix);
+            return cameraMatrices.get(drawable.camera.id).multiply(drawable._worldMatrix);
         }
-        return transformMatrix;
+        return drawable._worldMatrix;
     }
 
     /**

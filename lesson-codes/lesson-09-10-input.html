@@ -57,12 +57,13 @@
 
   <header>
     <h1>Lesson 8 — Input</h1>
-    <p>Two demos: <strong>Action Bindings</strong> (InputManager maps device events to named actions) and <strong>Canvas Controls</strong> (on-screen joystick &amp; button via PointerJoystick / Button).</p>
+    <p>Three demos: <strong>Action Bindings</strong>, <strong>Canvas Controls</strong> (on-screen joystick &amp; button), and <strong>Pointer Position</strong> (PointerPosition maps screen coords to world space via screenToWorld — works correctly with a moving camera).</p>
   </header>
 
   <div class="tabs">
     <button class="tab active" onclick="setDemo(0)">1. Action Bindings</button>
     <button class="tab"        onclick="setDemo(1)">2. Canvas Controls</button>
+    <button class="tab"        onclick="setDemo(2)">3. Pointer Position</button>
   </div>
 
   <div class="demo-area">
@@ -92,6 +93,13 @@
       <div class="ctrl-bar" id="ctrl-bar-1" style="display:none">
         <div class="ctrl-hint" style="text-align:left; padding-left:4px;">
           Touch joystick or FIRE button on canvas&nbsp;&nbsp;·&nbsp;&nbsp;Desktop: WASD + Space
+        </div>
+      </div>
+
+      <!-- Controls for Demo 2 -->
+      <div class="ctrl-bar" id="ctrl-bar-2" style="display:none">
+        <div class="ctrl-hint">
+          Click or tap anywhere on the canvas — a marker appears at the <strong>world position</strong>. Watch the markers stay fixed as the camera drifts.
         </div>
       </div>
     </div>
@@ -137,6 +145,24 @@ btn.position.set(475, 335);
 // Visualise with custom drawables
 scene.addNode(new JoystickDraw(js));
 scene.addNode(new ButtonDraw(btn));</div>
+    </div>
+
+    <!-- Panel 2: Pointer Position -->
+    <div class="info" id="panel-2" style="display:none">
+      <h3>Pointer Position</h3>
+      <p>PointerPosition converts screen coords to world space via <code>screenToWorld</code>. The camera drifts — tapping the same spot gives different world coords as the camera moves.</p>
+      <div class="val-row"><span class="val-label">world.x</span><span class="val-num yellow" id="pp-wx">—</span></div>
+      <div class="val-row"><span class="val-label">world.y</span><span class="val-num yellow" id="pp-wy">—</span></div>
+      <div class="val-row"><span class="val-label">cam.x</span><span class="val-num pink" id="pp-cx">0.0</span></div>
+      <div class="val-row"><span class="val-label">cam.y</span><span class="val-num pink" id="pp-cy">0.0</span></div>
+      <div class="val-row"><span class="val-label">pings placed</span><span class="val-num accent" id="pp-pings">0</span></div>
+      <div class="code-block">const pp = new PointerPosition(
+  ptrDev, { camera: cam });
+scene.addNode(pp);
+
+// pp.posVector — world coords
+// updated via cam.screenToWorld()
+// on every pointer event</div>
     </div>
   </div>
 
@@ -852,6 +878,85 @@ scene.addNode(new ButtonDraw(btn));</div>
     }
 
     // =========================================================================
+    // PingMark — world-space dot that fades out
+    // =========================================================================
+    class PingMark extends Drawable {
+      constructor(wx, wy, cam) {
+        super({ zIndex: 4, camera: cam });
+        this.position.set(wx, wy);
+        this._life = 4.0;
+      }
+      update(dt) {
+        this._life -= dt;
+        if (this._life <= 0 && this.scene) this.scene.removeNode(this);
+      }
+      draw(ctx) {
+        const a = Math.min(1, this._life * 0.6) * 0.85;
+        ctx.beginPath();
+        ctx.arc(0, 0, 5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(247,37,133,${a})`;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(0, 0, 13, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(247,37,133,${a * 0.45})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+
+    // =========================================================================
+    // PointerCross — crosshair tracking current pointer world position
+    // =========================================================================
+    class PointerCross extends Drawable {
+      constructor(pp, cam) {
+        super({ zIndex: 5, camera: cam });
+        this._pp = pp;
+        this._visible = false;
+      }
+      update(dt) {
+        this._visible = this._pp.pointerId !== null;
+        if (this._visible) this.position.copy(this._pp.posVector);
+      }
+      draw(ctx) {
+        if (!this._visible) return;
+        const s = 11;
+        ctx.strokeStyle = '#f72585';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-s, 0); ctx.lineTo(s, 0);
+        ctx.moveTo(0, -s); ctx.lineTo(0, s);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#f72585';
+        ctx.fill();
+      }
+    }
+
+    // =========================================================================
+    // PingManager — places PingMark nodes on each new pointer press
+    // =========================================================================
+    class PingManager extends SceneNode {
+      constructor(pp, cam, onPlace) {
+        super();
+        this._pp    = pp;
+        this._cam   = cam;
+        this._cb    = onPlace;
+        this._prev  = false;
+        this._count = 0;
+      }
+      update(dt) {
+        const active = this._pp.pointerId !== null;
+        if (!this._prev && active) {
+          this.scene.addNode(new PingMark(this._pp.posVector.x, this._pp.posVector.y, this._cam));
+          this._count++;
+          if (this._cb) this._cb(this._count);
+        }
+        this._prev = active;
+      }
+    }
+
+    // =========================================================================
     // Setup
     // =========================================================================
     const canvas   = document.getElementById('canvas');
@@ -917,6 +1022,9 @@ scene.addNode(new ButtonDraw(btn));</div>
     let activeDpad     = null;
     let activeJoystick = null;
     let activeButton   = null;
+    let activePP       = null;
+    let activePPCam    = null;
+    let ppPingCount    = 0;
 
     // =========================================================================
     // Scene helpers
@@ -1027,6 +1135,54 @@ scene.addNode(new ButtonDraw(btn));</div>
     });
 
     // =========================================================================
+    // Scene 2 — Pointer Position
+    // =========================================================================
+    sm.register('pointer-pos', scene => {
+      const cam = new Camera({ viewport: { width: 560, height: 420 }, zoom: 1, canvas });
+      scene.addNode(cam);
+      buildGrid(scene, cam);
+
+      // Drift driver — camera oscillates so same screen pos maps to different world coords
+      const camDriver = new SceneNode();
+      camDriver._t = 0;
+      camDriver.update = function(dt) {
+        this._t += dt;
+        cam.position.set(
+          Math.sin(this._t * 0.38) * 170,
+          Math.cos(this._t * 0.24) * 85
+        );
+      };
+      scene.addNode(camDriver);
+
+      // PointerPosition linked to the drifting camera
+      const pp = new PointerPosition(ptrDev, { camera: cam });
+      pp.name = 'pp';
+      activePP    = pp;
+      activePPCam = cam;
+      scene.addNode(pp);
+
+      // Crosshair at current pointer world position
+      scene.addNode(new PointerCross(pp, cam));
+
+      // Pings placed on each press
+      ppPingCount = 0;
+      scene.addNode(new PingManager(pp, cam, count => { ppPingCount = count; }));
+
+      // Landmark boxes so the drifting world is clearly visible
+      const lms = [
+        { x: -150, y: -80,  c: '#e94560' }, { x: 150, y: -80,  c: '#11a070' },
+        { x: -150, y:  80,  c: '#e9a020' }, { x: 150, y:  80,  c: '#5030b0' },
+        { x:    0, y: -160, c: '#4cc9f0' }, { x:   0, y: 160,  c: '#d040c0' },
+      ];
+      for (const lm of lms) {
+        const box = new RectDrawable({ width: 22, height: 22, fillColor: lm.c,
+          strokeColor: 'rgba(255,255,255,0.15)', lineWidth: 1, zIndex: 0, camera: cam });
+        box.position.set(lm.x, lm.y);
+        scene.addNode(box);
+      }
+    });
+
+    // =========================================================================
     // Demo switching
     // =========================================================================
     function setDemo(i) {
@@ -1034,6 +1190,7 @@ scene.addNode(new ButtonDraw(btn));</div>
       document.querySelectorAll('.info').forEach((p, idx) => p.style.display = idx === i ? '' : 'none');
       document.getElementById('ctrl-bar-0').style.display = i === 0 ? '' : 'none';
       document.getElementById('ctrl-bar-1').style.display = i === 1 ? '' : 'none';
+      document.getElementById('ctrl-bar-2').style.display = i === 2 ? '' : 'none';
       // Reset log and state
       logLines.length = 0;
       const logEl = document.getElementById('action-log');
@@ -1042,7 +1199,11 @@ scene.addNode(new ButtonDraw(btn));</div>
       activeDpad     = null;
       activeJoystick = null;
       activeButton   = null;
-      sm.switchScene(i === 0 ? 'bindings' : 'canvas-controls');
+      activePP       = null;
+      activePPCam    = null;
+      ppPingCount    = 0;
+      const scenes = ['bindings', 'canvas-controls', 'pointer-pos'];
+      sm.switchScene(scenes[i]);
     }
 
     sm.switchScene('bindings');
@@ -1074,6 +1235,15 @@ scene.addNode(new ButtonDraw(btn));</div>
       }
       if (activeButton) {
         document.getElementById('b-p').textContent = String(activeButton.pressed);
+      }
+
+      // HUD — Panel 2
+      if (activePP && activePPCam) {
+        document.getElementById('pp-wx').textContent = activePP.posVector.x.toFixed(1);
+        document.getElementById('pp-wy').textContent = activePP.posVector.y.toFixed(1);
+        document.getElementById('pp-cx').textContent = activePPCam.position.x.toFixed(1);
+        document.getElementById('pp-cy').textContent = activePPCam.position.y.toFixed(1);
+        document.getElementById('pp-pings').textContent = String(ppPingCount);
       }
 
       requestAnimationFrame(loop);

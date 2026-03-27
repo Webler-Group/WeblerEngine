@@ -260,3 +260,19 @@ const setMatrix = (m, a, b, c, d, e, f) => {
     m.e = e; m.f = f;
     return m;
 }
+
+/**
+ * Axis-aligned bounding box in world (or local) space.
+ * @typedef {{ minX: number, minY: number, maxX: number, maxY: number }} Bounds
+ */
+
+/**
+ * Returns true if two Bounds overlap (touching edges count as overlap).
+ *
+ * @param {Bounds} a
+ * @param {Bounds} b
+ * @returns {boolean}
+ */
+const boundsOverlap = (a, b) =>
+    a.maxX >= b.minX && a.minX <= b.maxX &&
+    a.maxY >= b.minY && a.minY <= b.maxY;
