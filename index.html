@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Physics Collisions Demo</title>
+    <title>Physics Constraints Demo</title>
 </head>
 
 <body>
@@ -17,7 +17,7 @@
     <script src="src/physics.js"></script>
 
     <script>
-        const W = 800, H = 500;
+        const W = 1200, H = 700;
         const canvas = document.querySelector("canvas");
         canvas.width = W;
         canvas.height = H;
@@ -49,32 +49,21 @@
                         const w = rnd(30, 60), h = rnd(30, 60);
                         makeBox(this.scene, val.x, val.y, w, h, pick(), { angle: rnd(0, Math.PI * 2), camera: this.camera });
                     }
-                }
+                };
             }
 
-            start() {
-                im.onAction("shape:insert", "start", this.handleInsert);
-            }
-
-            destroy() {
-                im.offAction("shape:insert", "start", this.handleInsert);
-            }
+            start() { im.onAction("shape:insert", "start", this.handleInsert); }
+            destroy() { im.offAction("shape:insert", "start", this.handleInsert); }
         }
 
-        // ─── Constraint drawable ─────────────────────────────────────────────
+        // ─── Constraint drawables ────────────────────────────────────────────
 
         class ConstraintDrawable extends Drawable {
-            /**
-             * @type {DistanceConstraint}
-             */
+            /** @type {DistanceConstraint} */
             constraint;
-            /**
-             * @type {string}
-             */
+            /** @type {string} */
             color;
-            /**
-             * @type {number}
-             */
+            /** @type {number} */
             lineWidth;
 
             /**
@@ -84,13 +73,11 @@
             constructor(constraint, params = {}) {
                 super(params);
                 this.constraint = constraint;
-                this.color = params.color ?? "rgba(255,255,255,0.55)";
+                this.color = params.color ?? "rgba(255,255,255,0.65)";
                 this.lineWidth = params.lineWidth ?? 2;
             }
 
-            /**
-             * @param {CanvasRenderingContext2D} ctx
-             */
+            /** @param {CanvasRenderingContext2D} ctx */
             draw(ctx) {
                 const c = this.constraint;
                 const wA = c.getWorldAnchor(c.bodyA, c.localA);
@@ -101,17 +88,134 @@
                 ctx.strokeStyle = this.color;
                 ctx.lineWidth = this.lineWidth;
                 ctx.stroke();
-                ctx.beginPath();
-                ctx.arc(wA.x, wA.y, 3, 0, Math.PI * 2);
                 ctx.fillStyle = this.color;
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(wB.x, wB.y, 3, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.beginPath(); ctx.arc(wA.x, wA.y, 3, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(wB.x, wB.y, 3, 0, Math.PI * 2); ctx.fill();
             }
         }
 
-        // ─── Body factories ───────────────────────────────────────────────────
+        class SpringConstraintDrawable extends Drawable {
+            /** @type {SpringConstraint} */
+            constraint;
+            /** @type {string} */
+            color;
+            /** @type {number} */
+            lineWidth;
+            /** @type {number} */
+            coils;
+
+            /**
+             * @param {SpringConstraint} constraint
+             * @param {DrawableParams & { color?: string, lineWidth?: number, coils?: number }} params
+             */
+            constructor(constraint, params = {}) {
+                super(params);
+                this.constraint = constraint;
+                this.color = params.color ?? "#f1c40f";
+                this.lineWidth = params.lineWidth ?? 2;
+                this.coils = params.coils ?? 8;
+            }
+
+            /** @param {CanvasRenderingContext2D} ctx */
+            draw(ctx) {
+                const c = this.constraint;
+                const wA = c.getWorldAnchor(c.bodyA, c.localA);
+                const wB = c.getWorldAnchor(c.bodyB, c.localB);
+                const dx = wB.x - wA.x, dy = wB.y - wA.y;
+                const len = Math.hypot(dx, dy);
+                if (len < 0.0001) return;
+                const ux = dx / len, uy = dy / len; // unit along spring
+                const px = -uy,      py = ux;        // unit perpendicular
+
+                const amp = 6;
+                const endLen = len * 0.08;
+                const coilLen = len - endLen * 2;
+                const steps = this.coils * 2;
+                const sx = wA.x + ux * endLen, sy = wA.y + uy * endLen;
+
+                ctx.beginPath();
+                ctx.moveTo(wA.x, wA.y);
+                ctx.lineTo(sx, sy);
+                for (let i = 0; i <= steps; i++) {
+                    const t = i / steps;
+                    const side = (i % 2 === 0) ? 1 : -1;
+                    ctx.lineTo(
+                        sx + ux * coilLen * t + px * amp * side,
+                        sy + uy * coilLen * t + py * amp * side
+                    );
+                }
+                ctx.lineTo(wB.x, wB.y);
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = this.lineWidth;
+                ctx.stroke();
+
+                ctx.fillStyle = this.color;
+                ctx.beginPath(); ctx.arc(wA.x, wA.y, 3, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(wB.x, wB.y, 3, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+
+        class RopeConstraintDrawable extends Drawable {
+            /** @type {RopeConstraint} */
+            constraint;
+            /** @type {string} */
+            color;
+            /** @type {number} */
+            lineWidth;
+
+            /**
+             * @param {RopeConstraint} constraint
+             * @param {DrawableParams & { color?: string, lineWidth?: number }} params
+             */
+            constructor(constraint, params = {}) {
+                super(params);
+                this.constraint = constraint;
+                this.color = params.color ?? "rgba(200,155,80,0.9)";
+                this.lineWidth = params.lineWidth ?? 2;
+            }
+
+            /** @param {CanvasRenderingContext2D} ctx */
+            draw(ctx) {
+                const c = this.constraint;
+                const wA = c.getWorldAnchor(c.bodyA, c.localA);
+                const wB = c.getWorldAnchor(c.bodyB, c.localB);
+                const dx = wB.x - wA.x, dy = wB.y - wA.y;
+                const dist = Math.hypot(dx, dy);
+                const slack = c.maxLength - dist;
+
+                // drop=0 when taut → quadratic bezier degenerates to a straight line.
+                // Smoothly droops downward as slack increases.
+                const drop = slack > 0 ? Math.min(slack * 0.35, 60) : 0;
+
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = this.lineWidth;
+                ctx.beginPath();
+                ctx.moveTo(wA.x, wA.y);
+                ctx.quadraticCurveTo(
+                    (wA.x + wB.x) / 2, (wA.y + wB.y) / 2 + drop,
+                    wB.x, wB.y
+                );
+                ctx.stroke();
+
+                // Chain-link circles only when taut and rope has length
+                if (slack <= 2 && dist > 0.5) {
+                    const count = Math.floor(dist / 12);
+                    ctx.lineWidth = 1;
+                    for (let i = 1; i < count; i++) {
+                        const t = i / count;
+                        ctx.beginPath();
+                        ctx.arc(wA.x + dx * t, wA.y + dy * t, 3, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+                }
+
+                ctx.fillStyle = this.color;
+                ctx.beginPath(); ctx.arc(wA.x, wA.y, 3, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(wB.x, wB.y, 3, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+
+        // ─── Body & constraint factories ─────────────────────────────────────
 
         function makeCircle(scene, x, y, radius, color, params = {}) {
             const { mass = 1, vx = 0, vy = 0, isStatic = false, camera = null } = params;
@@ -121,7 +225,6 @@
             body.vel.set(vx, vy);
             if (isStatic) body.setStatic();
             scene.addNode(body);
-
             const visual = new CircleDrawable({
                 radius, fillColor: color, camera,
                 strokeColor: "rgba(255,255,255,0.35)", lineWidth: 2, zIndex: 1,
@@ -136,7 +239,7 @@
             const hw = w / 2, hh = h / 2;
             const vertices = [
                 new Vector(-hw, -hh), new Vector(hw, -hh),
-                new Vector(hw, hh), new Vector(-hw, hh),
+                new Vector(hw,   hh), new Vector(-hw,  hh),
             ];
             const body = new Body({ vertices, mass, type: "Polygon", restitution: 0.3, friction: 0.6 });
             body.physPos.set(x, y);
@@ -146,7 +249,6 @@
             body.vel.set(vx, vy);
             if (isStatic) body.setStatic();
             scene.addNode(body);
-
             const visual = new PolygonDrawable({
                 vertices, fillColor: color, camera,
                 strokeColor: "rgba(255,255,255,0.35)", lineWidth: 2, zIndex: 1,
@@ -171,8 +273,21 @@
         function makeConstraint(scene, bodyA, bodyB, localA, localB, camera) {
             const constraint = new DistanceConstraint(bodyA, bodyB, localA, localB);
             scene.addNode(constraint);
-            const visual = new ConstraintDrawable(constraint, { camera, zIndex: 0 });
-            scene.addNode(visual);
+            scene.addNode(new ConstraintDrawable(constraint, { camera, zIndex: 0 }));
+            return constraint;
+        }
+
+        function makeSpring(scene, bodyA, bodyB, localA, localB, options, camera) {
+            const constraint = new SpringConstraint(bodyA, bodyB, localA, localB, options);
+            scene.addNode(constraint);
+            scene.addNode(new SpringConstraintDrawable(constraint, { camera, zIndex: 0 }));
+            return constraint;
+        }
+
+        function makeRope(scene, bodyA, bodyB, localA, localB, maxLength, camera) {
+            const constraint = new RopeConstraint(bodyA, bodyB, localA, localB, maxLength);
+            scene.addNode(constraint);
+            scene.addNode(new RopeConstraintDrawable(constraint, { camera, zIndex: 0 }));
             return constraint;
         }
 
@@ -180,53 +295,92 @@
 
         const solver = new Solver();
 
-        const COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#1abc9c", "#e91e63", "#ff5722", "#9b59b6", "#e67e22", "#8bc34a"];
+        const COLORS = ["#e74c3c","#3498db","#2ecc71","#f39c12","#1abc9c","#e91e63","#ff5722","#9b59b6","#e67e22","#8bc34a"];
 
         function rnd(min, max) { return min + Math.random() * (max - min); }
         function pick() { return COLORS[Math.floor(Math.random() * COLORS.length)]; }
 
         const initScene = (scene) => {
-            const T = 15; // wall thickness half
+            const T = 15;
 
             const camera = new Camera({ viewport: { width: W, height: H } });
             camera.position.set(W / 2, H / 2);
             scene.addNode(camera);
 
-            // Closed box: bottom, left, right, top walls
-            makeBox(scene, W / 2, H - T, W, T * 2, "#616161", { isStatic: true, camera });
-            makeBox(scene, T,     H / 2, T * 2, H, "#616161", { isStatic: true, camera });
-            makeBox(scene, W - T, H / 2, T * 2, H, "#616161", { isStatic: true, camera });
-            makeBox(scene, W / 2, T,     W, T * 2, "#616161", { isStatic: true, camera });
-
             const zero = new Vector(0, 0);
 
-            // ── Left: 3-link pendulum chain ───────────────────────────────────
-            const pin1 = makePin(scene, 160, 60, camera);
-            const ball1 = makeCircle(scene, 210, 160, 18, "#e74c3c", { mass: 2, camera });
-            const ball2 = makeCircle(scene, 260, 270, 18, "#e91e63", { mass: 2, camera });
-            const ball3 = makeCircle(scene, 220, 380, 14, "#ff5722", { mass: 1.5, camera });
-            makeConstraint(scene, pin1,  ball1, zero, zero, camera);
-            makeConstraint(scene, ball1, ball2, zero, zero, camera);
-            makeConstraint(scene, ball2, ball3, zero, zero, camera);
+            // Closed box walls
+            makeBox(scene, W / 2, H - T, W,    T * 2, "#616161", { isStatic: true, camera });
+            makeBox(scene, T,     H / 2, T * 2, H,    "#616161", { isStatic: true, camera });
+            makeBox(scene, W - T, H / 2, T * 2, H,    "#616161", { isStatic: true, camera });
+            makeBox(scene, W / 2, T,     W,    T * 2, "#616161", { isStatic: true, camera });
 
-            // ── Center: box chain hanging from a pin ──────────────────────────
-            const pin2 = makePin(scene, 400, 60, camera);
-            const cbox1 = makeBox(scene, 400, 170, 40, 25, "#3498db", { mass: 3, camera });
-            const cbox2 = makeBox(scene, 400, 300, 50, 30, "#1abc9c", { mass: 4, camera });
-            makeConstraint(scene, pin2,  cbox1, zero, zero, camera);
-            makeConstraint(scene, cbox1, cbox2, zero, zero, camera);
+            // Thin dividers
+            makeBox(scene, 400, H / 2, 6, H, "#2a2a3a", { isStatic: true, camera });
+            makeBox(scene, 800, H / 2, 6, H, "#2a2a3a", { isStatic: true, camera });
 
-            // ── Right: box suspended by two ropes ────────────────────────────
-            const pin3 = makePin(scene, 590, 60, camera);
-            const pin4 = makePin(scene, 700, 60, camera);
-            const platform = makeBox(scene, 645, 220, 90, 22, "#f39c12", { mass: 5, camera });
-            makeConstraint(scene, pin3, platform, zero, new Vector(-35, -11), camera);
-            makeConstraint(scene, pin4, platform, zero, new Vector( 35, -11), camera);
+            // ── Distance Constraints (x: 30–397) ─────────────────────────────
 
-            // A few loose balls to interact with the structures
-            makeCircle(scene, 160, 420, 14, "#9b59b6", { mass: 1.5, vx:  80, camera });
-            makeCircle(scene, 400, 420, 12, "#8bc34a", { mass: 1,   vx: -60, camera });
-            makeCircle(scene, 645, 380, 12, "#e67e22", { mass: 1,   vx:  50, camera });
+            // 3-link pendulum chain
+            const pin1 = makePin(scene, 155, 50, camera);
+            const dball1 = makeCircle(scene, 210, 165, 16, "#e74c3c",  { mass: 2,   camera });
+            const dball2 = makeCircle(scene, 255, 300, 16, "#e91e63",  { mass: 2,   camera });
+            const dball3 = makeCircle(scene, 215, 435, 13, "#ff5722",  { mass: 1.5, camera });
+            makeConstraint(scene, pin1,   dball1, zero, zero, camera);
+            makeConstraint(scene, dball1, dball2, zero, zero, camera);
+            makeConstraint(scene, dball2, dball3, zero, zero, camera);
+
+            // Platform suspended by two rods from two pins
+            const pin2     = makePin(scene, 295, 50, camera);
+            const pin3     = makePin(scene, 375, 50, camera);
+            const platform = makeBox(scene, 335, 225, 80, 22, "#3498db", { mass: 5, camera });
+            makeConstraint(scene, pin2, platform, zero, new Vector(-30, -11), camera);
+            makeConstraint(scene, pin3, platform, zero, new Vector( 30, -11), camera);
+            makeCircle(scene, 335, 130, 13, "#9b59b6", { mass: 1.5, camera });
+
+            // ── Spring Constraints (x: 403–797) ──────────────────────────────
+
+            // Two balls hanging from ceiling springs, connected by a horizontal spring
+            const pin4  = makePin(scene, 510, 50, camera);
+            const pin5  = makePin(scene, 690, 50, camera);
+            const sball1 = makeCircle(scene, 510, 240, 16, "#2ecc71", { mass: 2, camera });
+            const sball2 = makeCircle(scene, 690, 240, 16, "#1abc9c", { mass: 2, camera });
+            makeSpring(scene, pin4,  sball1, zero, zero, { stiffness: 100, damping: 6, restLength: 160 }, camera);
+            makeSpring(scene, pin5,  sball2, zero, zero, { stiffness: 100, damping: 6, restLength: 160 }, camera);
+            makeSpring(scene, sball1, sball2, zero, zero, { stiffness: 55,  damping: 4, restLength: 180 }, camera);
+
+            // Box suspended by two springs — ball dropped onto it
+            const pin6 = makePin(scene, 540, 50, camera);
+            const pin7 = makePin(scene, 660, 50, camera);
+            const sbox = makeBox(scene, 600, 430, 90, 22, "#e67e22", { mass: 6, camera });
+            makeSpring(scene, pin6, sbox, zero, new Vector(-35, -11), { stiffness: 140, damping: 9, restLength: 360 }, camera);
+            makeSpring(scene, pin7, sbox, zero, new Vector( 35, -11), { stiffness: 140, damping: 9, restLength: 360 }, camera);
+            makeCircle(scene, 600, 290, 14, "#f39c12", { mass: 2, vx: 45, camera });
+
+            // ── Rope Constraints (x: 803–1185) ───────────────────────────────
+            // Ropes are one-sided: they only pull when taut (dist >= maxLength).
+            // Unlike distance rods, the distance is free to shrink below maxLength.
+
+            // A: Free-fall then snap — ball starts very close to pin (big slack),
+            //    falls freely while rope droops, snaps taut and swings.
+            const pin8   = makePin(scene, 885, 50, camera);
+            const rball1 = makeCircle(scene, 885, 90, 15, "#e74c3c", { mass: 2, camera });
+            makeRope(scene, pin8, rball1, zero, zero, 240, camera);
+
+            // B: Pendulum going slack — enough lateral velocity to rise above
+            //    horizontal; rope goes slack at the top, ball flies free briefly,
+            //    then rope snaps taut again on the way back down.
+            const pin9   = makePin(scene, 1035, 50, camera);
+            const rball2 = makeCircle(scene, 1035, 250, 15, "#3498db", { mass: 2, vx: 510, camera });
+            makeRope(scene, pin9, rball2, zero, zero, 200, camera);
+
+            // C: 2-link chain — bottom link given lateral velocity; inner link
+            //    visibly droops slack when swinging inward, snaps straight outward.
+            const pin10  = makePin(scene, 1140, 50, camera);
+            const rball3 = makeCircle(scene, 1140, 190, 13, "#9b59b6", { mass: 1.5, camera });
+            const rball4 = makeCircle(scene, 1140, 350, 13, "#8bc34a", { mass: 1.5, vx: 130, camera });
+            makeRope(scene, pin10,  rball3, zero, zero, 150, camera);
+            makeRope(scene, rball3, rball4, zero, zero, 165, camera);
 
             const pointerPosControl = new PointerPosition(im.getDevice("pointer"), { camera });
             pointerPosControl.name = "pointer";
@@ -255,7 +409,11 @@
                     for (const body of sm.currentScene.findNodesByType(Body)) {
                         if (body.invMass > 0) body.applyForce(GRAVITY.clone().scale(body.mass));
                     }
-                    solver.step(sm.currentScene.findNodesByType(Body), sm.currentScene.findNodesByType(Constraint), dt);
+                    solver.step(
+                        sm.currentScene.findNodesByType(Body),
+                        sm.currentScene.findNodesByType(Constraint),
+                        dt
+                    );
                     sm.currentScene.updateWorldTransforms();
                     renderer.render(sm.currentScene.findNodesByType(Drawable));
                 }

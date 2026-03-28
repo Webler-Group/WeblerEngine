@@ -915,31 +915,85 @@ class DistanceConstraint extends Constraint {
 
 // Spring
 
+/**
+ * @typedef {{ stiffness?: number, damping?: number, restLength?: number, maxForce?: number, minLength?: number, maxLength?: number }} SpringOptions
+ */
+
 class SpringConstraint extends Constraint {
     /**
-     * @param {Body} bodyA - First body to connect
-     * @param {Body} bodyB - Second body to connect
-     * @param {Vector} localAnchorA - Anchor point on Body A (local space)
-     * @param {Vector} localAnchorB - Anchor point on Body B (local space)
-     * @param {Object} options - Spring config {stiffness, damping, restLength, etc.}
+     * Anchor point in bodyA's local space.
+     * @type {Vector}
+     */
+    localA;
+    /**
+     * Anchor point in bodyB's local space.
+     * @type {Vector}
+     */
+    localB;
+    /**
+     * Spring stiffness coefficient (N/m). Higher values produce a stiffer spring.
+     * @type {number}
+     */
+    stiffness;
+    /**
+     * Damping coefficient. Higher values dissipate energy faster.
+     * @type {number}
+     */
+    damping;
+    /**
+     * Maximum force magnitude applied each step. Clamps to prevent instability.
+     * @type {number}
+     */
+    maxForce;
+    /**
+     * Minimum allowed distance between anchors (compression limit).
+     * @type {number}
+     */
+    minLength;
+    /**
+     * Maximum allowed distance between anchors (stretch limit).
+     * @type {number}
+     */
+    maxLength;
+    /**
+     * Natural rest length of the spring in world units.
+     * @type {number}
+     */
+    restLength;
+    /**
+     * Cached world-space position of bodyA's anchor. Updated in applyForce().
+     * @type {Vector}
+     */
+    worldA;
+    /**
+     * Cached world-space position of bodyB's anchor. Updated in applyForce().
+     * @type {Vector}
+     */
+    worldB;
+
+    /**
+     * @param {Body} bodyA
+     * @param {Body} bodyB
+     * @param {Vector} localAnchorA  Anchor in bodyA's local space.
+     * @param {Vector} localAnchorB  Anchor in bodyB's local space.
+     * @param {SpringOptions} [options]
      */
     constructor(bodyA, bodyB, localAnchorA, localAnchorB, options = {}) {
         super(bodyA, bodyB);
         this.localA = localAnchorA;
         this.localB = localAnchorB;
-        this.stiffness = options.stiffness ?? 300;     // How bouncy/stiff the spring is
-        this.damping = options.damping ?? 10;          // How quickly it stops bouncing
-        this.maxForce = options.maxForce ?? 50000;     // Clamp to prevent explosions
-        this.minLength = options.minLength ?? 0;       // Minimum compression
-        this.maxLength = options.maxLength ?? Infinity; // Maximum stretch
+        this.stiffness = options.stiffness ?? 300;
+        this.damping   = options.damping   ?? 10;
+        this.maxForce  = options.maxForce  ?? 50000;
+        this.minLength = options.minLength ?? 0;
+        this.maxLength = options.maxLength ?? Infinity;
 
         if (options.restLength !== undefined) {
             this.restLength = options.restLength;
         } else {
-            // Find natural rest length based on current positions
             const wA = this.getWorldAnchor(bodyA, localAnchorA);
             const wB = this.getWorldAnchor(bodyB, localAnchorB);
-            this.restLength = Vector.sub(wB, wA).mag();
+            this.restLength = wB.clone().sub(wA).length();
         }
         this.worldA = this.getWorldAnchor(bodyA, localAnchorA);
         this.worldB = this.getWorldAnchor(bodyB, localAnchorB);
@@ -949,22 +1003,21 @@ class SpringConstraint extends Constraint {
         const a = this.bodyA, b = this.bodyB;
         this.worldA = this.getWorldAnchor(a, this.localA);
         this.worldB = this.getWorldAnchor(b, this.localB);
-        const delta = Vector.sub(this.worldB, this.worldA);
-        let dist = delta.mag();
+        const delta = this.worldB.clone().sub(this.worldA);
+        const dist = delta.length();
         if (dist < 0.0001) return;
-        const n = delta.copy().div(dist);
+        const n = delta.scale(1 / dist);
 
         // Clamp distance to [minLength, maxLength] before computing force
         const clampedDist = Math.max(this.minLength, Math.min(this.maxLength, dist));
         const stretch = clampedDist - this.restLength;
 
         // Relative velocity along the spring axis
-        const rA = Vector.sub(this.worldA, a.pos);
-        const rB = Vector.sub(this.worldB, b.pos);
+        const rA = this.worldA.clone().sub(a.physPos);
+        const rB = this.worldB.clone().sub(b.physPos);
         const vA = new Vector(a.vel.x - a.angVel * rA.y, a.vel.y + a.angVel * rA.x);
         const vB = new Vector(b.vel.x - b.angVel * rB.y, b.vel.y + b.angVel * rB.x);
-        const relVel = Vector.sub(vB, vA);
-        const velAlongSpring = relVel.dot(n);
+        const velAlongSpring = vB.clone().sub(vA).dot(n);
 
         // Hooke's Law + damping
         let forceMag = this.stiffness * stretch + this.damping * velAlongSpring;
@@ -973,7 +1026,6 @@ class SpringConstraint extends Constraint {
         if (dist > this.maxLength) forceMag += this.stiffness * 2 * (dist - this.maxLength);
         if (dist < this.minLength) forceMag += this.stiffness * 2 * (dist - this.minLength);
 
-        // Clamp force magnitude to prevent explosions
         forceMag = Math.max(-this.maxForce, Math.min(this.maxForce, forceMag));
 
         const fx = n.x * forceMag, fy = n.y * forceMag;
@@ -981,67 +1033,75 @@ class SpringConstraint extends Constraint {
         b.applyForceAtPoint(new Vector(-fx, -fy), this.worldB);
     }
 
-    preStep(dt) { }
+    preStep(_dt) { }
     solve() { }
     correctPosition() { }
-
-    draw(ctx) {
-        const ax = this.worldA.x, ay = this.worldA.y;
-        const bx = this.worldB.x, by = this.worldB.y;
-        const dx = bx - ax, dy = by - ay;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 1) return;
-        const nx = dx / dist, ny = dy / dist;
-        const px = -ny, py = nx;
-        const coils = 8, coilWidth = 6, endPad = 0.1;
-
-        // Red when hitting limits, green when normal
-        const atLimit = dist <= this.minLength + 2 || dist >= this.maxLength - 2;
-        const color = atLimit ? "#ff4466" : "#22cc66";
-
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(ax, ay);
-        const startX = ax + dx * endPad, startY = ay + dy * endPad;
-        ctx.lineTo(startX, startY);
-        const coilLen = dist * (1 - 2 * endPad);
-        for (let i = 0; i <= coils; i++) {
-            const t = i / coils;
-            const cx = startX + nx * coilLen * t;
-            const cy = startY + ny * coilLen * t;
-            const side = (i % 2 === 0 ? 1 : -1);
-            if (i === 0 || i === coils) ctx.lineTo(cx, cy);
-            else ctx.lineTo(cx + px * coilWidth * side, cy + py * coilWidth * side);
-        }
-        ctx.lineTo(bx, by);
-        ctx.stroke();
-
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(ax, ay, 3, 0, Math.PI * 2);
-        ctx.arc(bx, by, 3, 0, Math.PI * 2);
-        ctx.fill();
-    }
 }
 
 // ═══════════════════════════════════════════════════════════════
 // Rope Constraint (Max Distance Only)
-// ═══════════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════════
-// Rope Constraint (Max Distance Only)
-// Acts like a rigid rope or chain. It only applies an impulse when the
-// distance exceeds the maximum limit, allowing slack otherwise.
+// Acts like a rope or chain. Applies an impulse only when the distance
+// exceeds maxLength — slack is allowed below that limit.
 // ═══════════════════════════════════════════════════════════════
 
 class RopeConstraint extends Constraint {
     /**
-     * @param {Body} bodyA - First body
-     * @param {Body} bodyB - Second body
-     * @param {Vector} localAnchorA - Anchor point on Body A (local)
-     * @param {Vector} localAnchorB - Anchor point on Body B (local)
-     * @param {number} maxLength - Maximum allowed distance before the rope pulls tight.
+     * Anchor point in bodyA's local space.
+     * @type {Vector}
+     */
+    localA;
+    /**
+     * Anchor point in bodyB's local space.
+     * @type {Vector}
+     */
+    localB;
+    /**
+     * Maximum allowed distance between anchors before the rope pulls tight.
+     * @type {number}
+     */
+    maxLength;
+    /**
+     * Accumulated normal impulse across solver iterations (warm-starting).
+     * @type {number}
+     */
+    accImpulse;
+    /**
+     * Cached world-space position of bodyA's anchor. Computed in preStep.
+     * @type {Vector}
+     */
+    worldA;
+    /**
+     * Cached world-space position of bodyB's anchor. Computed in preStep.
+     * @type {Vector}
+     */
+    worldB;
+    /**
+     * Offset from bodyA's physPos to worldA. Computed in preStep.
+     * @type {Vector}
+     */
+    rA;
+    /**
+     * Offset from bodyB's physPos to worldB. Computed in preStep.
+     * @type {Vector}
+     */
+    rB;
+    /**
+     * Unit vector from worldA toward worldB. Computed in preStep.
+     * @type {Vector}
+     */
+    n;
+    /**
+     * Inverse of the constraint's effective mass along n. Computed in preStep.
+     * @type {number}
+     */
+    effectiveMass;
+
+    /**
+     * @param {Body} bodyA
+     * @param {Body} bodyB
+     * @param {Vector} localAnchorA  Anchor in bodyA's local space.
+     * @param {Vector} localAnchorB  Anchor in bodyB's local space.
+     * @param {number | null} [maxLength]  Max distance; defaults to current anchor separation.
      */
     constructor(bodyA, bodyB, localAnchorA, localAnchorB, maxLength = null) {
         super(bodyA, bodyB);
@@ -1051,22 +1111,25 @@ class RopeConstraint extends Constraint {
         if (maxLength === null) {
             const wA = this.getWorldAnchor(bodyA, localAnchorA);
             const wB = this.getWorldAnchor(bodyB, localAnchorB);
-            this.maxLength = Vector.sub(wB, wA).mag();
+            this.maxLength = wB.clone().sub(wA).length();
         } else {
             this.maxLength = maxLength;
         }
     }
 
-    preStep(dt) {
+    /**
+     * @param {number} _dt
+     */
+    preStep(_dt) {
         const a = this.bodyA, b = this.bodyB;
         this.worldA = this.getWorldAnchor(a, this.localA);
         this.worldB = this.getWorldAnchor(b, this.localB);
-        this.rA = Vector.sub(this.worldA, a.pos);
-        this.rB = Vector.sub(this.worldB, b.pos);
+        this.rA = this.worldA.clone().sub(a.physPos);
+        this.rB = this.worldB.clone().sub(b.physPos);
 
-        const delta = Vector.sub(this.worldB, this.worldA);
-        const dist = delta.mag();
-        this.n = dist > 0.0001 ? delta.copy().div(dist) : new Vector(1, 0);
+        const delta = this.worldB.clone().sub(this.worldA);
+        const dist = delta.length();
+        this.n = dist > 0.0001 ? delta.scale(1 / dist) : new Vector(1, 0);
 
         // Only active when stretched beyond max length
         if (dist <= this.maxLength) {
@@ -1096,8 +1159,8 @@ class RopeConstraint extends Constraint {
         const a = this.bodyA, b = this.bodyB;
         const { rA, rB, n } = this;
 
-        const delta = Vector.sub(this.getWorldAnchor(b, this.localB), this.getWorldAnchor(a, this.localA));
-        if (delta.mag() <= this.maxLength) return;
+        const delta = this.getWorldAnchor(b, this.localB).sub(this.getWorldAnchor(a, this.localA));
+        if (delta.length() <= this.maxLength) return;
 
         const dvx = (b.vel.x - b.angVel * rB.y) - (a.vel.x - a.angVel * rA.y);
         const dvy = (b.vel.y + b.angVel * rB.x) - (a.vel.y + a.angVel * rA.x);
@@ -1105,7 +1168,7 @@ class RopeConstraint extends Constraint {
 
         let lambda = -this.effectiveMass * Cdot;
 
-        // One-sided: only pull together (negative impulse), never push apart
+        // One-sided: only pull together, never push apart
         const oldAcc = this.accImpulse;
         this.accImpulse = Math.min(0, this.accImpulse + lambda);
         lambda = this.accImpulse - oldAcc;
@@ -1123,15 +1186,14 @@ class RopeConstraint extends Constraint {
         const a = this.bodyA, b = this.bodyB;
         const wA = this.getWorldAnchor(a, this.localA);
         const wB = this.getWorldAnchor(b, this.localB);
-        const delta = Vector.sub(wB, wA);
-        const dist = delta.mag();
+        const delta = wB.clone().sub(wA);
+        const dist = delta.length();
         if (dist <= this.maxLength) return;
 
-        const n = dist > 0.0001 ? delta.copy().div(dist) : new Vector(1, 0);
+        const n = dist > 0.0001 ? delta.scale(1 / dist) : new Vector(1, 0);
         const C = dist - this.maxLength;
-
-        const rA = Vector.sub(wA, a.pos);
-        const rB = Vector.sub(wB, b.pos);
+        const rA = wA.clone().sub(a.physPos);
+        const rB = wB.clone().sub(b.physPos);
         const rAxN = rA.x * n.y - rA.y * n.x;
         const rBxN = rB.x * n.y - rB.y * n.x;
         let K = a.invMass + b.invMass
@@ -1139,27 +1201,9 @@ class RopeConstraint extends Constraint {
             + rBxN * rBxN * b.invInertia;
         if (K === 0) return;
         const corr = -C / K * 0.2;
-        a.pos.x -= n.x * corr * a.invMass;
-        a.pos.y -= n.y * corr * a.invMass;
-        b.pos.x += n.x * corr * b.invMass;
-        b.pos.y += n.y * corr * b.invMass;
-    }
-
-    draw(ctx) {
-        const wA = this.getWorldAnchor(this.bodyA, this.localA);
-        const wB = this.getWorldAnchor(this.bodyB, this.localB);
-        ctx.strokeStyle = "rgba(255, 200, 50, 0.7)";
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([6, 3]);
-        ctx.beginPath();
-        ctx.moveTo(wA.x, wA.y);
-        ctx.lineTo(wB.x, wB.y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = "#ffcc33";
-        ctx.beginPath();
-        ctx.arc(wA.x, wA.y, 3, 0, Math.PI * 2);
-        ctx.arc(wB.x, wB.y, 3, 0, Math.PI * 2);
-        ctx.fill();
+        a.physPos.x -= n.x * corr * a.invMass;
+        a.physPos.y -= n.y * corr * a.invMass;
+        b.physPos.x += n.x * corr * b.invMass;
+        b.physPos.y += n.y * corr * b.invMass;
     }
 }
