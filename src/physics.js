@@ -767,3 +767,154 @@ class Solver {
         }
     }
 }
+
+
+// Constraints
+
+
+// ═══════════════════════════════════════════════════════════════
+// Base Constraint
+// The fundamental interface for all constraints. Constraints limit
+// how bodies can move relative to each other (e.g. distance, angle).
+// ═══════════════════════════════════════════════════════════════
+
+class Constraint {
+    /**
+     * @param {Body} bodyA - First body
+     * @param {Body} bodyB - Second body
+     */
+    constructor(bodyA, bodyB) {
+        this.bodyA = bodyA;
+        this.bodyB = bodyB;
+    }
+
+    preStep(dt) { }
+    solve() { }
+    correctPosition() { }
+    draw(ctx) { }
+
+    getWorldAnchor(body, local) {
+        const cos = Math.cos(body.angle), sin = Math.sin(body.angle);
+        return new Vector(
+            body.pos.x + local.x * cos - local.y * sin,
+            body.pos.y + local.x * sin + local.y * cos
+        );
+    }
+
+    worldToLocal(body, world) {
+        const d = Vector.sub(world, body.pos);
+        const cos = Math.cos(-body.angle), sin = Math.sin(-body.angle);
+        return new Vector(d.x * cos - d.y * sin, d.x * sin + d.y * cos);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Distance Constraint (Rod)
+// ═══════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════
+// Distance Constraint (Rod / Stick)
+// Keeps two points on two bodies at a fixed distance from each other.
+// Useful for creating rigid bridges, pendulums, or connected structures.
+// ═══════════════════════════════════════════════════════════════
+
+class DistanceConstraint extends Constraint {
+    constructor(bodyA, bodyB, localAnchorA, localAnchorB, length = null) {
+        super(bodyA, bodyB);
+        this.localA = localAnchorA;
+        this.localB = localAnchorB;
+        this.accImpulse = 0; // Accumulated impulse across solver iterations
+
+        if (length === null) {
+            // Calculate initial distance between anchors if no length given
+            const wA = this.getWorldAnchor(bodyA, localAnchorA);
+            const wB = this.getWorldAnchor(bodyB, localAnchorB);
+            this.targetLength = Vector.sub(wB, wA).mag();
+        } else {
+            this.targetLength = length;
+        }
+    }
+
+    preStep(dt) {
+        // 1. Calculate world positions of anchors
+        const a = this.bodyA, b = this.bodyB;
+        this.worldA = this.getWorldAnchor(a, this.localA);
+        this.worldB = this.getWorldAnchor(b, this.localB);
+        this.rA = Vector.sub(this.worldA, a.pos);
+        this.rB = Vector.sub(this.worldB, b.pos);
+
+        // 2. Determine pulling direction (normal n)
+        const delta = Vector.sub(this.worldB, this.worldA);
+        const dist = delta.mag();
+        this.n = dist > 0.0001 ? delta.copy().div(dist) : new Vector(1, 0);
+
+        const rAxN = this.rA.x * this.n.y - this.rA.y * this.n.x;
+        const rBxN = this.rB.x * this.n.y - this.rB.y * this.n.x;
+        this.effectiveMass = a.invMass + b.invMass
+            + rAxN * rAxN * a.invInertia
+            + rBxN * rBxN * b.invInertia;
+        if (this.effectiveMass > 0) this.effectiveMass = 1 / this.effectiveMass;
+
+        // Warm start
+        const px = this.n.x * this.accImpulse;
+        const py = this.n.y * this.accImpulse;
+        a.vel.x -= px * a.invMass; a.vel.y -= py * a.invMass;
+        a.angVel -= (this.rA.x * py - this.rA.y * px) * a.invInertia;
+        b.vel.x += px * b.invMass; b.vel.y += py * b.invMass;
+        b.angVel += (this.rB.x * py - this.rB.y * px) * b.invInertia;
+    }
+
+    solve() {
+        const a = this.bodyA, b = this.bodyB;
+        const { rA, rB, n } = this;
+        const dvx = (b.vel.x - b.angVel * rB.y) - (a.vel.x - a.angVel * rA.y);
+        const dvy = (b.vel.y + b.angVel * rB.x) - (a.vel.y + a.angVel * rA.x);
+        const Cdot = dvx * n.x + dvy * n.y;
+        const lambda = -this.effectiveMass * Cdot;
+        this.accImpulse += lambda;
+
+        const px = n.x * lambda, py = n.y * lambda;
+        a.vel.x -= px * a.invMass; a.vel.y -= py * a.invMass;
+        a.angVel -= (rA.x * py - rA.y * px) * a.invInertia;
+        b.vel.x += px * b.invMass; b.vel.y += py * b.invMass;
+        b.angVel += (rB.x * py - rB.y * px) * b.invInertia;
+    }
+
+    correctPosition() {
+        const a = this.bodyA, b = this.bodyB;
+        const wA = this.getWorldAnchor(a, this.localA);
+        const wB = this.getWorldAnchor(b, this.localB);
+        const delta = Vector.sub(wB, wA);
+        const dist = delta.mag();
+        if (dist < 0.0001 && this.targetLength < 0.0001) return;
+
+        const n = dist > 0.0001 ? delta.copy().div(dist) : new Vector(1, 0);
+        const C = dist - this.targetLength;
+        const rA = Vector.sub(wA, a.pos);
+        const rB = Vector.sub(wB, b.pos);
+        const rAxN = rA.x * n.y - rA.y * n.x;
+        const rBxN = rB.x * n.y - rB.y * n.x;
+        let K = a.invMass + b.invMass + rAxN * rAxN * a.invInertia + rBxN * rBxN * b.invInertia;
+        if (K === 0) return;
+
+        const corr = -C / K * 0.2;
+        a.pos.x -= n.x * corr * a.invMass; a.pos.y -= n.y * corr * a.invMass;
+        b.pos.x += n.x * corr * b.invMass; b.pos.y += n.y * corr * b.invMass;
+    }
+
+    draw(ctx) {
+        ctx.strokeStyle = "#4488ff";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(this.worldA.x, this.worldA.y);
+        ctx.lineTo(this.worldB.x, this.worldB.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#4488ff";
+        ctx.beginPath();
+        ctx.arc(this.worldA.x, this.worldA.y, 4, 0, Math.PI * 2);
+        ctx.arc(this.worldB.x, this.worldB.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
