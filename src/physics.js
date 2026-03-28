@@ -516,28 +516,69 @@ class SimpleSolver {
 // Solver class
 
 class Solver {
+    /**
+     * @type {number}
+     */
+    iterations;
+    /**
+     * @type {Manifold[]}
+     */
+    manifolds;
+    /**
+     * @type {any[]}
+     */
+    constraints;
+    /**
+     * @type {Set<string>}
+     */
+    noCollide;
+    /**
+     * Collision pairs from the previous step for enter/stay/exit diffing.
+     * @type {Map<string, Manifold>}
+     */
+    _prevCollisions;
+
+    /**
+     * @param {number} [iterations=15]
+     */
     constructor(iterations = 15) {
         this.iterations = iterations;
         this.manifolds = [];
         this.constraints = [];
         this.noCollide = new Set();
+        this._prevCollisions = new Map();
     }
 
+    /**
+     * @param {any} c
+     */
     addConstraint(c) {
         this.constraints.push(c);
         this.excludeCollision(c.bodyA, c.bodyB);
     }
 
+    /**
+     * @param {Body} a
+     * @param {Body} b
+     */
     excludeCollision(a, b) {
-        const key = a.id < b.id ? a.id + ':' + b.id : b.id + ':' + a.id;
+        const key = a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
         this.noCollide.add(key);
     }
 
+    /**
+     * @param {Body} a
+     * @param {Body} b
+     * @returns {boolean}
+     */
     shouldCollide(a, b) {
-        const key = a.id < b.id ? a.id + ':' + b.id : b.id + ':' + a.id;
+        const key = a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
         return !this.noCollide.has(key);
     }
 
+    /**
+     * @param {Body[]} bodies
+     */
     detectCollisions(bodies) {
         this.manifolds = [];
         for (let i = 0; i < bodies.length; i++) {
@@ -559,6 +600,9 @@ class Solver {
         }
     }
 
+    /**
+     * @param {Manifold} m
+     */
     preCompute(m) {
         const a = m.bodyA, b = m.bodyB;
         const n = m.normal;
@@ -567,9 +611,9 @@ class Solver {
         m.mu = Math.sqrt(a.friction * b.friction);
         m.tangent = t;
         m.contactData = [];
-        for (let c of m.contacts) {
-            const rA = Vector.sub(c, a.pos);
-            const rB = Vector.sub(c, b.pos);
+        for (const c of m.contacts) {
+            const rA = c.clone().sub(a.physPos);
+            const rB = c.clone().sub(b.physPos);
             const rAxN = rA.x * n.y - rA.y * n.x;
             const rBxN = rB.x * n.y - rB.y * n.x;
             const kN = a.invMass + b.invMass + rAxN * rAxN * a.invInertia + rBxN * rBxN * b.invInertia;
@@ -580,32 +624,38 @@ class Solver {
                 rA, rB,
                 massN: kN > 0 ? 1 / kN : 0,
                 massT: kT > 0 ? 1 / kT : 0,
-                jnAcc: 0, jtAcc: 0
+                jnAcc: 0, jtAcc: 0,
             });
         }
     }
 
+    /**
+     * @param {number} dt
+     */
     preStepConstraints(dt) {
-        for (let c of this.constraints) c.preStep(dt);
+        for (const c of this.constraints) c.preStep(dt);
     }
 
     applySpringForces() {
-        for (let c of this.constraints) {
+        for (const c of this.constraints) {
             if (c instanceof SpringConstraint) c.applyForce();
         }
     }
 
     solve() {
         for (let iter = 0; iter < this.iterations; iter++) {
-            for (let m of this.manifolds) this.solveManifold(m);
-            for (let c of this.constraints) c.solve();
+            for (const m of this.manifolds) this.solveManifold(m);
+            for (const c of this.constraints) c.solve();
         }
     }
 
+    /**
+     * @param {Manifold} m
+     */
     solveManifold(m) {
         const a = m.bodyA, b = m.bodyB;
         const n = m.normal, t = m.tangent;
-        for (let cd of m.contactData) {
+        for (const cd of m.contactData) {
             const { rA, rB } = cd;
             const dvx = (b.vel.x - b.angVel * rB.y) - (a.vel.x - a.angVel * rA.y);
             const dvy = (b.vel.y + b.angVel * rB.x) - (a.vel.y + a.angVel * rA.x);
@@ -639,21 +689,81 @@ class Solver {
 
     correctPositions() {
         const percent = 0.4, slop = 0.01;
-        for (let m of this.manifolds) {
+        for (const m of this.manifolds) {
             const a = m.bodyA, b = m.bodyB;
             const totalInv = a.invMass + b.invMass;
             if (totalInv === 0) continue;
             const corr = Math.max(m.penetration - slop, 0) / totalInv * percent;
-            a.pos.x -= m.normal.x * corr * a.invMass;
-            a.pos.y -= m.normal.y * corr * a.invMass;
-            b.pos.x += m.normal.x * corr * b.invMass;
-            b.pos.y += m.normal.y * corr * b.invMass;
+            a.physPos.x -= m.normal.x * corr * a.invMass;
+            a.physPos.y -= m.normal.y * corr * a.invMass;
+            b.physPos.x += m.normal.x * corr * b.invMass;
+            b.physPos.y += m.normal.y * corr * b.invMass;
         }
-        for (let c of this.constraints) c.correctPosition();
+        for (const c of this.constraints) c.correctPosition();
     }
 
-    drawDebug(ctx) {
-        for (let m of this.manifolds) m.draw(ctx);
-        for (let c of this.constraints) c.draw(ctx);
+    /**
+     * @param {Body[]} bodies
+     * @param {number} dt
+     */
+    step(bodies, dt) {
+        // Sync scene transform → physics state
+        for (const body of bodies) {
+            body.physPos.copy(body.position);
+            body.physAngle = body.angle;
+        }
+
+        // 1. Apply spring / constraint forces
+        this.applySpringForces();
+
+        // 2. Detect collisions and precompute contact data
+        this.detectCollisions(bodies);
+
+        // 3. Pre-step constraints
+        this.preStepConstraints(dt);
+
+        // 4. Solve impulses
+        this.solve();
+
+        // 5. Integrate positions and velocities
+        for (const body of bodies) {
+            body.physicsUpdate(dt);
+        }
+
+        // 6. Correct positions (Baumgarte)
+        this.correctPositions();
+
+        // Emit collision:enter / collision:stay / collision:exit events
+        /** @type {Map<string, Manifold>} */
+        const current = new Map();
+        for (const m of this.manifolds) {
+            const key = m.bodyA.id < m.bodyB.id
+                ? `${m.bodyA.id}:${m.bodyB.id}`
+                : `${m.bodyB.id}:${m.bodyA.id}`;
+            current.set(key, m);
+        }
+
+        for (const [key, m] of current) {
+            /** @type {CollisionEventType} */
+            const type = this._prevCollisions.has(key) ? "collision:stay" : "collision:enter";
+            m.bodyA.emit(type, m);
+            m.bodyB.emit(type, m);
+        }
+
+        for (const [key, m] of this._prevCollisions) {
+            if (!current.has(key)) {
+                m.bodyA.emit("collision:exit", m);
+                m.bodyB.emit("collision:exit", m);
+            }
+        }
+
+        this._prevCollisions = current;
+
+        // Sync physics state → scene transform (includes positional corrections
+        // from collision resolution applied during event handlers above)
+        for (const body of bodies) {
+            body.setWorldPosition(body.physPos);
+            body.setWorldAngle(body.physAngle);
+        }
     }
 }

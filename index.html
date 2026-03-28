@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Physics Collisions Demo</title>
 </head>
+
 <body>
     <canvas></canvas>
 
@@ -24,167 +26,46 @@
         const renderer = new Renderer(canvas);
         renderer.clearColor = "#0d0d1a";
 
-        // ─── BoundsController ─────────────────────────────────────────────────
-        // Reflects body velocity when it drifts out of the canvas bounds.
+        const im = new InputManager({
+            keyboard: true,
+            pointer: canvas
+        });
 
-        class BoundsController extends SceneNode {
-            /**
-             * @type {Body[]}
-             */
-            bodies = [];
+        im.addBinding("shape:insert", { device: "pointer", control: "pointer" });
 
-            /**
-             * @param {Body[]} bodies
-             */
-            constructor(bodies) {
+        const GRAVITY = new Vector(0, 500);
+
+        class ShapeManager extends SceneNode {
+            constructor(im, camera) {
                 super();
-                this.bodies = bodies;
-            }
+                this.im = im;
+                this.camera = camera;
 
-            /**
-             * @param {number} dt
-             */
-            update(dt) {
-                for (const body of this.bodies) {
-                    const p = body.position;
-                    if (p.x < 0 || p.x > W) body.vel.x *= -1;
-                    if (p.y < 0 || p.y > H) body.vel.y *= -1;
+                this.handleInsert = (val) => {
+                    if (Math.random() < 0.5) {
+                        const r = rnd(12, 28);
+                        makeCircle(this.scene, val.x, val.y, r, pick(), { camera: this.camera });
+                    } else {
+                        const w = rnd(30, 60), h = rnd(30, 60);
+                        makeBox(this.scene, val.x, val.y, w, h, pick(), { angle: rnd(0, Math.PI * 2), camera: this.camera });
+                    }
                 }
             }
-        }
 
-        // ─── CollisionDebugDrawable ───────────────────────────────────────────
-        // Positioned at scene origin (identity world transform), so draw()
-        // coordinates map directly to world/screen space.
-
-        class CollisionDebugDrawable extends Drawable {
-            /**
-             * @type {Manifold}
-             */
-            manifold;
-
-            /**
-             * @param {Manifold} manifold
-             */
-            constructor(manifold) {
-                super({ zIndex: 100 });
-                this.manifold = manifold;
+            start() {
+                im.onAction("shape:insert", "start", this.handleInsert);
             }
 
-            /**
-             * @param {CanvasRenderingContext2D} ctx
-             */
-            draw(ctx) {
-                const m = this.manifold;
-                const n = m.normal;
-
-                for (const c of m.contacts) {
-                    // Normal arrow
-                    const arrowLen = 36;
-                    const ex = c.x + n.x * arrowLen;
-                    const ey = c.y + n.y * arrowLen;
-                    ctx.beginPath();
-                    ctx.moveTo(c.x, c.y);
-                    ctx.lineTo(ex, ey);
-                    ctx.strokeStyle = "#00ff88";
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-
-                    // Arrowhead
-                    const ang = Math.atan2(n.y, n.x);
-                    ctx.beginPath();
-                    ctx.moveTo(ex, ey);
-                    ctx.lineTo(ex - 9 * Math.cos(ang - 0.45), ey - 9 * Math.sin(ang - 0.45));
-                    ctx.lineTo(ex - 9 * Math.cos(ang + 0.45), ey - 9 * Math.sin(ang + 0.45));
-                    ctx.closePath();
-                    ctx.fillStyle = "#00ff88";
-                    ctx.fill();
-
-                    // Contact dot
-                    ctx.beginPath();
-                    ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
-                    ctx.fillStyle = "#ff3344";
-                    ctx.fill();
-                    ctx.strokeStyle = "rgba(255,255,255,0.6)";
-                    ctx.lineWidth = 1;
-                    ctx.stroke();
-                }
-
-                // Info panel at midpoint between the two bodies
-                const px = (m.bodyA.physPos.x + m.bodyB.physPos.x) * 0.5;
-                const py = (m.bodyA.physPos.y + m.bodyB.physPos.y) * 0.5;
-
-                const lines = [
-                    `${m.bodyA.type} \u2194 ${m.bodyB.type}`,
-                    `pen: ${m.penetration.toFixed(1)} px`,
-                    `normal: (${n.x.toFixed(2)}, ${n.y.toFixed(2)})`,
-                    `contacts: ${m.contacts.length}`,
-                ];
-
-                const lineH = 14, pad = 7;
-                const boxW = 172, boxH = lines.length * lineH + pad * 2;
-                const bx = px + 14, by = py - boxH / 2;
-
-                ctx.fillStyle = "rgba(0,0,0,0.78)";
-                ctx.strokeStyle = "#00ff88";
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.rect(bx, by, boxW, boxH);
-                ctx.fill();
-                ctx.stroke();
-
-                ctx.font = "bold 11px monospace";
-                ctx.textBaseline = "top";
-                lines.forEach((line, i) => {
-                    ctx.fillStyle = i === 0 ? "#ffdd44" : "#dddddd";
-                    ctx.fillText(line, bx + pad, by + pad + i * lineH);
-                });
-                ctx.textBaseline = "alphabetic";
+            destroy() {
+                im.offAction("shape:insert", "start", this.handleInsert);
             }
-        }
-
-        // ─── Collision event wiring ───────────────────────────────────────────
-
-        const collisionDrawables = new Map();
-
-        function pairKey(a, b) {
-            return a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
-        }
-
-        function attachCollisionHandlers(body, scene) {
-            // Guard `target === m.bodyA` ensures each pair is handled once,
-            // since both bodies receive the same event.
-            body.on("collision:enter", ({ data: m, target }) => {
-                if (target !== m.bodyA) return;
-                const key = pairKey(m.bodyA, m.bodyB);
-                const dbg = new CollisionDebugDrawable(m);
-                scene.addNode(dbg);
-                collisionDrawables.set(key, dbg);
-            });
-
-            body.on("collision:stay", ({ data: m, target }) => {
-                if (target !== m.bodyA) return;
-                const key = pairKey(m.bodyA, m.bodyB);
-                const dbg = collisionDrawables.get(key);
-                if (dbg) dbg.manifold = m;
-            });
-
-            body.on("collision:exit", ({ data: m, target }) => {
-                if (target !== m.bodyA) return;
-                const key = pairKey(m.bodyA, m.bodyB);
-                const dbg = collisionDrawables.get(key);
-                if (dbg) {
-                    scene.removeNode(dbg);
-                    collisionDrawables.delete(key);
-                }
-            });
         }
 
         // ─── Body factories ───────────────────────────────────────────────────
 
         function makeCircle(scene, x, y, radius, color, params = {}) {
-            const { mass = 1, vx = 0, vy = 0, isStatic = false } = params;
-            const body = new Body({ radius, mass, type: "Circle", restitution: 1.0, friction: 0.0 });
+            const { mass = 1, vx = 0, vy = 0, isStatic = false, camera = null } = params;
+            const body = new Body({ radius, mass, type: "Circle", restitution: 0.4, friction: 0.5 });
             body.physPos.set(x, y);
             body.position.set(x, y);
             body.vel.set(vx, vy);
@@ -192,24 +73,22 @@
             scene.addNode(body);
 
             const visual = new CircleDrawable({
-                radius, fillColor: color,
+                radius, fillColor: color, camera,
                 strokeColor: "rgba(255,255,255,0.35)", lineWidth: 2, zIndex: 1,
             });
             visual.setParent(body);
             scene.addNode(visual);
-
-            attachCollisionHandlers(body, scene);
             return body;
         }
 
         function makeBox(scene, x, y, w, h, color, params = {}) {
-            const { mass = 1, vx = 0, vy = 0, angle = 0, isStatic = false } = params;
+            const { mass = 1, vx = 0, vy = 0, angle = 0, isStatic = false, camera = null } = params;
             const hw = w / 2, hh = h / 2;
             const vertices = [
                 new Vector(-hw, -hh), new Vector(hw, -hh),
-                new Vector(hw,   hh), new Vector(-hw,  hh),
+                new Vector(hw, hh), new Vector(-hw, hh),
             ];
-            const body = new Body({ vertices, mass, type: "Polygon", restitution: 1.0, friction: 0.0 });
+            const body = new Body({ vertices, mass, type: "Polygon", restitution: 0.3, friction: 0.6 });
             body.physPos.set(x, y);
             body.position.set(x, y);
             body.physAngle = angle;
@@ -219,43 +98,57 @@
             scene.addNode(body);
 
             const visual = new PolygonDrawable({
-                vertices, fillColor: color,
+                vertices, fillColor: color, camera,
                 strokeColor: "rgba(255,255,255,0.35)", lineWidth: 2, zIndex: 1,
             });
             visual.setParent(body);
             scene.addNode(visual);
-
-            attachCollisionHandlers(body, scene);
             return body;
         }
 
         // ─── Scene setup ──────────────────────────────────────────────────────
 
-        const solver = new SimpleSolver();
+        const solver = new Solver();
+
+        const COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#1abc9c", "#e91e63", "#ff5722", "#9b59b6", "#e67e22", "#8bc34a"];
+
+        function rnd(min, max) { return min + Math.random() * (max - min); }
+        function pick() { return COLORS[Math.floor(Math.random() * COLORS.length)]; }
 
         const initScene = (scene) => {
-            makeCircle(scene, 160, 200, 30, "#e74c3c", { vx:  80, vy:  40 });
-            makeCircle(scene, 620, 280, 22, "#3498db", { vx: -60, vy: -30 });
-            makeCircle(scene, 400, 130, 18, "#2ecc71", { vx:  50, vy:  60 });
-            makeCircle(scene, 300, 350, 25, "#f39c12", { vx: -70, vy: -50 });
-            makeCircle(scene, 520,  90, 20, "#1abc9c", { vx:  45, vy:  70 });
-            makeCircle(scene, 100, 400, 15, "#e91e63", { vx:  90, vy: -35 });
-            makeCircle(scene, 700, 150, 28, "#ff5722", { vx: -55, vy:  45 });
+            const T = 15; // wall thickness half
 
-            makeBox(scene, 550, 180, 55, 55, "#9b59b6", { vx: -50, vy:  35, angle:  0.3 });
-            makeBox(scene, 220, 320, 50, 50, "#e67e22", { vx:  60, vy: -40, angle: -0.4 });
-            makeBox(scene, 680, 380, 45, 45, "#607d8b", { vx: -65, vy: -30, angle:  0.8 });
-            makeBox(scene, 380, 260, 40, 60, "#8bc34a", { vx:  55, vy:  50, angle: -0.2 });
+            const camera = new Camera({ viewport: { width: W, height: H } });
+            camera.position.set(W / 2, H / 2);
+            scene.addNode(camera);
 
-            // Static obstacles
-            makeCircle(scene, 400, 250, 35, "#9e9e9e", { isStatic: true });
-            makeBox(scene, 180,  120, 80, 20, "#757575", { isStatic: true, angle:  0.4 });
-            makeBox(scene, 630,  380, 80, 20, "#757575", { isStatic: true, angle: -0.3 });
-            makeCircle(scene, 650,  100, 22, "#bdbdbd", { isStatic: true });
-            makeCircle(scene, 150,  380, 18, "#bdbdbd", { isStatic: true });
+            // Open-top box: bottom, left wall, right wall
+            makeBox(scene, W / 2, H - T, W, T * 2, "#616161", { isStatic: true, camera });
+            makeBox(scene, T, H / 2, T * 2, H, "#616161", { isStatic: true, camera });
+            makeBox(scene, W - T, H / 2, T * 2, H, "#616161", { isStatic: true, camera });
 
-            const bodies = scene.findNodesByType(Body);
-            scene.addNode(new BoundsController(bodies));
+            // Inner bounds for spawning
+            const minX = T * 2 + 40, maxX = W - T * 2 - 40;
+            const minY = 40, maxY = H - T * 2 - 40;
+
+            // Random circles
+            for (let i = 0; i < 8; i++) {
+                const r = rnd(12, 28);
+                makeCircle(scene, rnd(minX, maxX), rnd(minY, maxY * 0.5), r, pick(), { camera });
+            }
+
+            // Random boxes
+            for (let i = 0; i < 7; i++) {
+                const w = rnd(30, 60), h = rnd(30, 60);
+                makeBox(scene, rnd(minX, maxX), rnd(minY, maxY * 0.5), w, h, pick(), { angle: rnd(0, Math.PI), camera });
+            }
+
+            const pointerPosControl = new PointerPosition(im.getDevice("pointer"), { camera });
+            pointerPosControl.name = "pointer";
+            scene.addNode(pointerPosControl);
+
+            const shapeManager = new ShapeManager(im, camera);
+            scene.addNode(shapeManager);
         };
 
         sm.register("Demo", initScene);
@@ -274,6 +167,9 @@
                 if (sm.currentScene) {
                     sm.currentScene.update(dt);
                     sm.currentScene.updateWorldTransforms();
+                    for (const body of sm.currentScene.findNodesByType(Body)) {
+                        if (body.invMass > 0) body.applyForce(GRAVITY.clone().scale(body.mass));
+                    }
                     solver.step(sm.currentScene.findNodesByType(Body), dt);
                     sm.currentScene.updateWorldTransforms();
                     renderer.render(sm.currentScene.findNodesByType(Drawable));
@@ -283,4 +179,5 @@
         loop();
     </script>
 </body>
+
 </html>
