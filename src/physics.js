@@ -52,3 +52,93 @@ class Body extends SceneNode {
         this.clearForces();
     }
 }
+
+
+
+// Bodies
+// Circle
+class Circle extends Body {
+    constructor(x, y, radius, mass = 1, material = {}) {
+        const inertia = 0.5 * mass * radius * radius;
+        super(x, y, mass, inertia);
+        this.radius = radius;
+        this.type = "Circle";
+        if (material.restitution !== undefined) this.restitution = material.restitution;
+        if (material.friction !== undefined) this.friction = material.friction;
+    }
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        ctx.rotate(this.angle);
+        if (this.render) {
+            this.render(ctx);
+            ctx.restore();
+            return;
+        }
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, 2 * Math.PI);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
+        ctx.fill();
+        ctx.strokeStyle = "#ccc";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(this.radius, 0);
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
+// Polygon 
+class Polygon extends Body {
+    constructor(x, y, vertices, mass = 1, material = {}) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (let v of vertices) {
+            minX = Math.min(minX, v.x); minY = Math.min(minY, v.y);
+            maxX = Math.max(maxX, v.x); maxY = Math.max(maxY, v.y);
+        }
+        const width = maxX - minX, height = maxY - minY;
+        const inertia = (1 / 12) * mass * (width * width + height * height);
+        super(x, y, mass, inertia);
+        this.vertices = vertices;
+        this.type = "Polygon";
+        if (material.restitution !== undefined) this.restitution = material.restitution;
+        if (material.friction !== undefined) this.friction = material.friction;
+    }
+    getWorldVertices() {
+        const worldVertices = [];
+        for (let i = 0; i < this.vertices.length; i++) {
+            const v = this.vertices[i].copy();
+            v.rotate(this.angle);
+            v.add(this.pos);
+            worldVertices.push(v);
+        }
+        return worldVertices;
+    }
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        ctx.rotate(this.angle);
+        if (this.render) {
+            this.render(ctx);
+            ctx.restore();
+            return;
+        }
+        ctx.beginPath();
+        if (this.vertices.length > 0) {
+            ctx.moveTo(this.vertices[0].x, this.vertices[0].y);
+            for (let i = 1; i < this.vertices.length; i++) {
+                ctx.lineTo(this.vertices[i].x, this.vertices[i].y);
+            }
+            ctx.closePath();
+        }
+        ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
+        ctx.fill();
+        ctx.strokeStyle = "#aaa";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
