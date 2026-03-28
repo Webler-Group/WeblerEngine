@@ -913,4 +913,253 @@ class DistanceConstraint extends Constraint {
     }
 }
 
-class SpringConstraint extends Constraint {}
+// Spring
+
+class SpringConstraint extends Constraint {
+    /**
+     * @param {Body} bodyA - First body to connect
+     * @param {Body} bodyB - Second body to connect
+     * @param {Vector} localAnchorA - Anchor point on Body A (local space)
+     * @param {Vector} localAnchorB - Anchor point on Body B (local space)
+     * @param {Object} options - Spring config {stiffness, damping, restLength, etc.}
+     */
+    constructor(bodyA, bodyB, localAnchorA, localAnchorB, options = {}) {
+        super(bodyA, bodyB);
+        this.localA = localAnchorA;
+        this.localB = localAnchorB;
+        this.stiffness = options.stiffness ?? 300;     // How bouncy/stiff the spring is
+        this.damping = options.damping ?? 10;          // How quickly it stops bouncing
+        this.maxForce = options.maxForce ?? 50000;     // Clamp to prevent explosions
+        this.minLength = options.minLength ?? 0;       // Minimum compression
+        this.maxLength = options.maxLength ?? Infinity; // Maximum stretch
+
+        if (options.restLength !== undefined) {
+            this.restLength = options.restLength;
+        } else {
+            // Find natural rest length based on current positions
+            const wA = this.getWorldAnchor(bodyA, localAnchorA);
+            const wB = this.getWorldAnchor(bodyB, localAnchorB);
+            this.restLength = Vector.sub(wB, wA).mag();
+        }
+        this.worldA = this.getWorldAnchor(bodyA, localAnchorA);
+        this.worldB = this.getWorldAnchor(bodyB, localAnchorB);
+    }
+
+    applyForce() {
+        const a = this.bodyA, b = this.bodyB;
+        this.worldA = this.getWorldAnchor(a, this.localA);
+        this.worldB = this.getWorldAnchor(b, this.localB);
+        const delta = Vector.sub(this.worldB, this.worldA);
+        let dist = delta.mag();
+        if (dist < 0.0001) return;
+        const n = delta.copy().div(dist);
+
+        // Clamp distance to [minLength, maxLength] before computing force
+        const clampedDist = Math.max(this.minLength, Math.min(this.maxLength, dist));
+        const stretch = clampedDist - this.restLength;
+
+        // Relative velocity along the spring axis
+        const rA = Vector.sub(this.worldA, a.pos);
+        const rB = Vector.sub(this.worldB, b.pos);
+        const vA = new Vector(a.vel.x - a.angVel * rA.y, a.vel.y + a.angVel * rA.x);
+        const vB = new Vector(b.vel.x - b.angVel * rB.y, b.vel.y + b.angVel * rB.x);
+        const relVel = Vector.sub(vB, vA);
+        const velAlongSpring = relVel.dot(n);
+
+        // Hooke's Law + damping
+        let forceMag = this.stiffness * stretch + this.damping * velAlongSpring;
+
+        // Extra correction if beyond hard limits
+        if (dist > this.maxLength) forceMag += this.stiffness * 2 * (dist - this.maxLength);
+        if (dist < this.minLength) forceMag += this.stiffness * 2 * (dist - this.minLength);
+
+        // Clamp force magnitude to prevent explosions
+        forceMag = Math.max(-this.maxForce, Math.min(this.maxForce, forceMag));
+
+        const fx = n.x * forceMag, fy = n.y * forceMag;
+        a.applyForceAtPoint(new Vector(fx, fy), this.worldA);
+        b.applyForceAtPoint(new Vector(-fx, -fy), this.worldB);
+    }
+
+    preStep(dt) { }
+    solve() { }
+    correctPosition() { }
+
+    draw(ctx) {
+        const ax = this.worldA.x, ay = this.worldA.y;
+        const bx = this.worldB.x, by = this.worldB.y;
+        const dx = bx - ax, dy = by - ay;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 1) return;
+        const nx = dx / dist, ny = dy / dist;
+        const px = -ny, py = nx;
+        const coils = 8, coilWidth = 6, endPad = 0.1;
+
+        // Red when hitting limits, green when normal
+        const atLimit = dist <= this.minLength + 2 || dist >= this.maxLength - 2;
+        const color = atLimit ? "#ff4466" : "#22cc66";
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        const startX = ax + dx * endPad, startY = ay + dy * endPad;
+        ctx.lineTo(startX, startY);
+        const coilLen = dist * (1 - 2 * endPad);
+        for (let i = 0; i <= coils; i++) {
+            const t = i / coils;
+            const cx = startX + nx * coilLen * t;
+            const cy = startY + ny * coilLen * t;
+            const side = (i % 2 === 0 ? 1 : -1);
+            if (i === 0 || i === coils) ctx.lineTo(cx, cy);
+            else ctx.lineTo(cx + px * coilWidth * side, cy + py * coilWidth * side);
+        }
+        ctx.lineTo(bx, by);
+        ctx.stroke();
+
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(ax, ay, 3, 0, Math.PI * 2);
+        ctx.arc(bx, by, 3, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Rope Constraint (Max Distance Only)
+// ═══════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════
+// Rope Constraint (Max Distance Only)
+// Acts like a rigid rope or chain. It only applies an impulse when the
+// distance exceeds the maximum limit, allowing slack otherwise.
+// ═══════════════════════════════════════════════════════════════
+
+class RopeConstraint extends Constraint {
+    /**
+     * @param {Body} bodyA - First body
+     * @param {Body} bodyB - Second body
+     * @param {Vector} localAnchorA - Anchor point on Body A (local)
+     * @param {Vector} localAnchorB - Anchor point on Body B (local)
+     * @param {number} maxLength - Maximum allowed distance before the rope pulls tight.
+     */
+    constructor(bodyA, bodyB, localAnchorA, localAnchorB, maxLength = null) {
+        super(bodyA, bodyB);
+        this.localA = localAnchorA;
+        this.localB = localAnchorB;
+        this.accImpulse = 0;
+        if (maxLength === null) {
+            const wA = this.getWorldAnchor(bodyA, localAnchorA);
+            const wB = this.getWorldAnchor(bodyB, localAnchorB);
+            this.maxLength = Vector.sub(wB, wA).mag();
+        } else {
+            this.maxLength = maxLength;
+        }
+    }
+
+    preStep(dt) {
+        const a = this.bodyA, b = this.bodyB;
+        this.worldA = this.getWorldAnchor(a, this.localA);
+        this.worldB = this.getWorldAnchor(b, this.localB);
+        this.rA = Vector.sub(this.worldA, a.pos);
+        this.rB = Vector.sub(this.worldB, b.pos);
+
+        const delta = Vector.sub(this.worldB, this.worldA);
+        const dist = delta.mag();
+        this.n = dist > 0.0001 ? delta.copy().div(dist) : new Vector(1, 0);
+
+        // Only active when stretched beyond max length
+        if (dist <= this.maxLength) {
+            this.accImpulse = 0;
+            return;
+        }
+
+        const rAxN = this.rA.x * this.n.y - this.rA.y * this.n.x;
+        const rBxN = this.rB.x * this.n.y - this.rB.y * this.n.x;
+        this.effectiveMass = a.invMass + b.invMass
+            + rAxN * rAxN * a.invInertia
+            + rBxN * rBxN * b.invInertia;
+        if (this.effectiveMass > 0) this.effectiveMass = 1 / this.effectiveMass;
+
+        // Warm start
+        const px = this.n.x * this.accImpulse;
+        const py = this.n.y * this.accImpulse;
+        a.vel.x -= px * a.invMass;
+        a.vel.y -= py * a.invMass;
+        a.angVel -= (this.rA.x * py - this.rA.y * px) * a.invInertia;
+        b.vel.x += px * b.invMass;
+        b.vel.y += py * b.invMass;
+        b.angVel += (this.rB.x * py - this.rB.y * px) * b.invInertia;
+    }
+
+    solve() {
+        const a = this.bodyA, b = this.bodyB;
+        const { rA, rB, n } = this;
+
+        const delta = Vector.sub(this.getWorldAnchor(b, this.localB), this.getWorldAnchor(a, this.localA));
+        if (delta.mag() <= this.maxLength) return;
+
+        const dvx = (b.vel.x - b.angVel * rB.y) - (a.vel.x - a.angVel * rA.y);
+        const dvy = (b.vel.y + b.angVel * rB.x) - (a.vel.y + a.angVel * rA.x);
+        const Cdot = dvx * n.x + dvy * n.y;
+
+        let lambda = -this.effectiveMass * Cdot;
+
+        // One-sided: only pull together (negative impulse), never push apart
+        const oldAcc = this.accImpulse;
+        this.accImpulse = Math.min(0, this.accImpulse + lambda);
+        lambda = this.accImpulse - oldAcc;
+
+        const px = n.x * lambda, py = n.y * lambda;
+        a.vel.x -= px * a.invMass;
+        a.vel.y -= py * a.invMass;
+        a.angVel -= (rA.x * py - rA.y * px) * a.invInertia;
+        b.vel.x += px * b.invMass;
+        b.vel.y += py * b.invMass;
+        b.angVel += (rB.x * py - rB.y * px) * b.invInertia;
+    }
+
+    correctPosition() {
+        const a = this.bodyA, b = this.bodyB;
+        const wA = this.getWorldAnchor(a, this.localA);
+        const wB = this.getWorldAnchor(b, this.localB);
+        const delta = Vector.sub(wB, wA);
+        const dist = delta.mag();
+        if (dist <= this.maxLength) return;
+
+        const n = dist > 0.0001 ? delta.copy().div(dist) : new Vector(1, 0);
+        const C = dist - this.maxLength;
+
+        const rA = Vector.sub(wA, a.pos);
+        const rB = Vector.sub(wB, b.pos);
+        const rAxN = rA.x * n.y - rA.y * n.x;
+        const rBxN = rB.x * n.y - rB.y * n.x;
+        let K = a.invMass + b.invMass
+            + rAxN * rAxN * a.invInertia
+            + rBxN * rBxN * b.invInertia;
+        if (K === 0) return;
+        const corr = -C / K * 0.2;
+        a.pos.x -= n.x * corr * a.invMass;
+        a.pos.y -= n.y * corr * a.invMass;
+        b.pos.x += n.x * corr * b.invMass;
+        b.pos.y += n.y * corr * b.invMass;
+    }
+
+    draw(ctx) {
+        const wA = this.getWorldAnchor(this.bodyA, this.localA);
+        const wB = this.getWorldAnchor(this.bodyB, this.localB);
+        ctx.strokeStyle = "rgba(255, 200, 50, 0.7)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 3]);
+        ctx.beginPath();
+        ctx.moveTo(wA.x, wA.y);
+        ctx.lineTo(wB.x, wB.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#ffcc33";
+        ctx.beginPath();
+        ctx.arc(wA.x, wA.y, 3, 0, Math.PI * 2);
+        ctx.arc(wB.x, wB.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
