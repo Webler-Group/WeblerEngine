@@ -47,17 +47,6 @@ class SceneManager {
     }
 
     /**
-     * Updates current scene
-     * 
-     * @param {number} dt
-     */
-    update(dt) {
-        if (this.currentScene) {
-            this.currentScene.update(dt);
-        }
-    }
-
-    /**
      * Destroys current scene then initializes and starts new scene
      * 
      * @param {string} name
@@ -263,9 +252,11 @@ class Scene {
         for (const node of this.nodes) {
             node.update(dt);
         }
+    }
 
-        for(const node of this.nodes) {
-            if(!node.parent) {
+    updateWorldTransforms() {
+        for (const node of this.nodes) {
+            if (!node.parent) {
                 node.updateWorldTransform();
             }
         }
@@ -274,7 +265,7 @@ class Scene {
     /**
      * Called automatically before the end of its life cycle.
      */
-    destroy() { 
+    destroy() {
         this.running = false;
     }
 }

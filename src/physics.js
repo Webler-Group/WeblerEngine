@@ -1,5 +1,5 @@
 /**
- * @typedef {{ mass?: number, inertia?: number, type?: "Circle" | "Polygon" }} BodyParams
+ * @typedef {{ mass?: number, inertia?: number, type?: "Circle" | "Polygon", radius?: number, vertices?: Vector[], restitution?: number, friction?: number }} BodyParams
  */
 
 
@@ -64,6 +64,14 @@ class Body extends SceneNode {
      * @type {"Circle" | "Polygon"}
      */
     type;
+    /**
+     * @type {number | undefined}
+     */
+    radius;
+    /**
+     * @type {Vector[] | undefined}
+     */
+    vertices;
 
     /**
      * @param {BodyParams} params
@@ -84,9 +92,21 @@ class Body extends SceneNode {
         this.invInertia = inertia === 0 ? 0 : 1 / inertia;
         this.force = new Vector(0, 0);
         this.torque = 0;
-        this.restitution = 0.2;
-        this.friction = 0.4;
+        this.restitution = params.restitution ?? 0.2;
+        this.friction = params.friction ?? 0.4;
         this.type = params.type;
+        this.radius = params.radius;
+        this.vertices = params.vertices;
+    }
+    getWorldVertices() {
+        const worldVertices = [];
+        for (let i = 0; i < this.vertices.length; i++) {
+            const v = this.vertices[i].clone();
+            v.rotate(this.physAngle);
+            v.add(this.physPos);
+            worldVertices.push(v);
+        }
+        return worldVertices;
     }
     setStatic() {
         this.mass = 0; this.invMass = 0;
@@ -130,28 +150,12 @@ class Body extends SceneNode {
  */
 class Circle extends Body {
     /**
-     * @type {number}
-     */
-    radius;
-    /**
-     * @type {number}
-     */
-    restitution;
-    /**
-     * @type {number}
-     */
-    friction;
-
-    /**
      * @param {CircleParams} params
      */
     constructor(params = {}) {
         const mass = params.mass ?? 1;
         const inertia = 0.5 * mass * params.radius * params.radius;
-        super({ mass, inertia, type: "Circle" });
-        this.radius = params.radius;
-        if (params.restitution !== undefined) this.restitution = params.restitution;
-        if (params.friction !== undefined) this.friction = params.friction;
+        super({ ...params, mass, inertia, type: "Circle" });
     }
 }
 
@@ -160,19 +164,6 @@ class Circle extends Body {
  * @typedef {BodyParams & MaterialParams & { vertices: Vector[] }} PolygonParams
  */
 class Polygon extends Body {
-    /**
-     * @type {Vector[]}
-     */
-    vertices;
-    /**
-     * @type {number}
-     */
-    restitution;
-    /**
-     * @type {number}
-     */
-    friction;
-
     /**
      * @param {PolygonParams} params
      */
@@ -186,82 +177,89 @@ class Polygon extends Body {
         }
         const width = maxX - minX, height = maxY - minY;
         const inertia = (1 / 12) * mass * (width * width + height * height);
-        super({ mass, inertia, type: "Polygon" });
-        this.vertices = vertices;
-        if (params.restitution !== undefined) this.restitution = params.restitution;
-        if (params.friction !== undefined) this.friction = params.friction;
-    }
-    getWorldVertices() {
-        const worldVertices = [];
-        for (let i = 0; i < this.vertices.length; i++) {
-            const v = this.vertices[i].clone();
-            v.rotate(this.physAngle);
-            v.add(this.physPos);
-            worldVertices.push(v);
-        }
-        return worldVertices;
+        super({ ...params, mass, inertia, type: "Polygon" });
     }
 }
 
 
 // Manifold
-
+/**
+ * @typedef {{ bodyA: Body, bodyB: Body, normal: Vector, penetration: number, contacts: Vector[] }} ManifoldParams
+ */
 class Manifold {
-    constructor(bodyA, bodyB, normal, penetration, contacts) {
-        this.bodyA = bodyA;
-        this.bodyB = bodyB;
-        this.normal = normal;
-        this.penetration = penetration;
-        this.contacts = contacts || [];
-    }
-    draw(ctx) {
-        if (this.contacts.length === 0) return;
-        ctx.save();
-        ctx.fillStyle = "rgba(0, 255, 136, 0.8)";
-        for (let c of this.contacts) {
-            ctx.beginPath();
-            ctx.arc(c.x, c.y, 3, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        let avg = new Vector(0, 0);
-        for (let c of this.contacts) avg.add(c);
-        avg.div(this.contacts.length);
-        const tip = avg.copy().add(this.normal.copy().mult(15));
-        ctx.strokeStyle = "rgba(255, 50, 50, 0.8)";
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(avg.x, avg.y);
-        ctx.lineTo(tip.x, tip.y);
-        ctx.stroke();
-        ctx.restore();
+    /**
+     * @type {Body}
+     */
+    bodyA;
+    /**
+     * @type {Body}
+     */
+    bodyB;
+    /**
+     * @type {Vector}
+     */
+    normal;
+    /**
+     * @type {number}
+     */
+    penetration;
+    /**
+     * @type {Vector[]}
+     */
+    contacts;
+
+    /**
+     * @param {ManifoldParams} params
+     */
+    constructor(params) {
+        this.bodyA = params.bodyA;
+        this.bodyB = params.bodyB;
+        this.normal = params.normal;
+        this.penetration = params.penetration;
+        this.contacts = params.contacts ?? [];
     }
 }
 
-// Collisions - for deteciting collision between bodies
+// Collisions - for detecting collision between bodies
 class Collisions {
+    /**
+     * @param {Body} bodyA
+     * @param {Body} bodyB
+     * @returns {Manifold | null}
+     */
     static findCollision(bodyA, bodyB) {
         if (bodyA.type === "Circle" && bodyB.type === "Circle") return Collisions.circleVsCircle(bodyA, bodyB);
         if (bodyA.type === "Polygon" && bodyB.type === "Polygon") return Collisions.polygonVsPolygon(bodyA, bodyB);
         if (bodyA.type === "Circle" && bodyB.type === "Polygon") return Collisions.circleVsPolygon(bodyA, bodyB);
         if (bodyA.type === "Polygon" && bodyB.type === "Circle") {
             const m = Collisions.circleVsPolygon(bodyB, bodyA);
-            if (m) { m.normal.mult(-1);[m.bodyA, m.bodyB] = [m.bodyB, m.bodyA]; }
+            if (m) { m.normal.negate(); [m.bodyA, m.bodyB] = [m.bodyB, m.bodyA]; }
             return m;
         }
         return null;
     }
 
+    /**
+     * @param {Circle} a
+     * @param {Circle} b
+     * @returns {Manifold | null}
+     */
     static circleVsCircle(a, b) {
-        const diff = Vector.sub(b.pos, a.pos);
-        const dist = diff.mag();
+        const diff = b.physPos.clone().sub(a.physPos);
+        const dist = diff.length();
         const rSum = a.radius + b.radius;
         if (dist >= rSum) return null;
-        const normal = dist > 0 ? diff.copy().div(dist) : new Vector(1, 0);
+        const normal = dist > 0 ? diff.scale(1 / dist) : new Vector(1, 0);
         const pen = rSum - dist;
-        const contact = a.pos.copy().add(normal.copy().mult(a.radius - pen / 2));
-        return new Manifold(a, b, normal, pen, [contact]);
+        const contact = a.physPos.clone().add(normal.clone().scale(a.radius - pen / 2));
+        return new Manifold({ bodyA: a, bodyB: b, normal, penetration: pen, contacts: [contact] });
     }
 
+    /**
+     * @param {Polygon} a
+     * @param {Polygon} b
+     * @returns {Manifold | null}
+     */
     static polygonVsPolygon(a, b) {
         const vertsA = a.getWorldVertices();
         const vertsB = b.getWorldVertices();
@@ -283,8 +281,8 @@ class Collisions {
         const refNormal = ref.normal;
         const incEdge = Collisions.findIncidentEdge(incVerts, refNormal);
         let contacts = Collisions.clipEdge(refV1, refV2, refNormal, incEdge);
-        let normal = refNormal.copy();
-        if (flip) normal.mult(-1);
+        let normal = refNormal.clone();
+        if (flip) normal.negate();
 
         if (contacts.length === 0) {
             const refDist = refNormal.dot(refV1);
@@ -293,22 +291,27 @@ class Collisions {
                 const d = v.dot(refNormal) - refDist;
                 if (d < deepestD) { deepestD = d; deepest = v; }
             }
-            if (deepest) contacts = [deepest.copy()];
+            if (deepest) contacts = [deepest.clone()];
             else return null;
         }
-        return new Manifold(a, b, normal, Math.abs(ref.separation), contacts);
+        return new Manifold({ bodyA: a, bodyB: b, normal, penetration: Math.abs(ref.separation), contacts });
     }
 
+    /**
+     * @param {Vector[]} vertsA
+     * @param {Vector[]} vertsB
+     * @returns {{ separation: number, normal: Vector, edgeIndex: number }}
+     */
     static findMinSeparation(vertsA, vertsB) {
         let bestSeparation = -Infinity, bestEdgeIndex = -1, bestNormal = null;
         for (let i = 0; i < vertsA.length; i++) {
             const edgeStart = vertsA[i];
             const edgeEnd = vertsA[(i + 1) % vertsA.length];
-            const edgeVector = Vector.sub(edgeEnd, edgeStart);
+            const edgeVector = edgeEnd.clone().sub(edgeStart);
             const edgeNormal = new Vector(edgeVector.y, -edgeVector.x).normalize();
             let minSeparation = Infinity;
             for (const vertex of vertsB) {
-                const projection = Vector.sub(vertex, edgeStart).dot(edgeNormal);
+                const projection = vertex.clone().sub(edgeStart).dot(edgeNormal);
                 if (projection < minSeparation) minSeparation = projection;
             }
             if (minSeparation > bestSeparation) {
@@ -320,10 +323,15 @@ class Collisions {
         return { separation: bestSeparation, normal: bestNormal, edgeIndex: bestEdgeIndex };
     }
 
+    /**
+     * @param {Vector[]} verts
+     * @param {Vector} refNormal
+     * @returns {{ v1: Vector, v2: Vector }}
+     */
     static findIncidentEdge(verts, refNormal) {
         let minDot = Infinity, index = 0;
         for (let i = 0; i < verts.length; i++) {
-            const edge = Vector.sub(verts[(i + 1) % verts.length], verts[i]);
+            const edge = verts[(i + 1) % verts.length].clone().sub(verts[i]);
             const normal = new Vector(edge.y, -edge.x).normalize();
             const d = normal.dot(refNormal);
             if (d < minDot) { minDot = d; index = i; }
@@ -331,11 +339,18 @@ class Collisions {
         return { v1: verts[index], v2: verts[(index + 1) % verts.length] };
     }
 
+    /**
+     * @param {Vector} refV1
+     * @param {Vector} refV2
+     * @param {Vector} refNormal
+     * @param {{ v1: Vector, v2: Vector }} incEdge
+     * @returns {Vector[]}
+     */
     static clipEdge(refV1, refV2, refNormal, incEdge) {
-        const tangent = Vector.sub(refV2, refV1).normalize();
+        const tangent = refV2.clone().sub(refV1).normalize();
         let cp = Collisions.clipSegment([incEdge.v1, incEdge.v2], refV1, tangent);
         if (cp.length < 2) return [];
-        cp = Collisions.clipSegment(cp, refV2, tangent.copy().mult(-1));
+        cp = Collisions.clipSegment(cp, refV2, tangent.clone().negate());
         if (cp.length < 2) return [];
         const refDist = refNormal.dot(refV1);
         const contacts = [];
@@ -345,28 +360,39 @@ class Collisions {
         return contacts;
     }
 
+    /**
+     * @param {Vector[]} points
+     * @param {Vector} planePoint
+     * @param {Vector} planeNormal
+     * @returns {Vector[]}
+     */
     static clipSegment(points, planePoint, planeNormal) {
         const out = [];
-        const dist = p => Vector.sub(p, planePoint).dot(planeNormal);
+        const dist = p => p.clone().sub(planePoint).dot(planeNormal);
         let d0 = dist(points[0]), d1 = dist(points[1]);
         if (d0 >= 0) out.push(points[0]);
         if (d1 >= 0) out.push(points[1]);
         if ((d0 > 0 && d1 < 0) || (d0 < 0 && d1 > 0)) {
             const t = d0 / (d0 - d1);
-            out.push(Vector.lerp(points[0], points[1], t));
+            out.push(points[0].clone().lerp(points[1], t));
         }
         return out;
     }
 
+    /**
+     * @param {Circle} circle
+     * @param {Polygon} polygon
+     * @returns {Manifold | null}
+     */
     static circleVsPolygon(circle, polygon) {
         const verts = polygon.getWorldVertices();
         let minOverlap = Infinity, bestAxis = null;
 
         for (let i = 0; i < verts.length; i++) {
-            const edge = Vector.sub(verts[(i + 1) % verts.length], verts[i]);
+            const edge = verts[(i + 1) % verts.length].clone().sub(verts[i]);
             const axis = new Vector(edge.y, -edge.x).normalize();
             const pPoly = Collisions.projectVerts(verts, axis);
-            const cProj = circle.pos.dot(axis);
+            const cProj = circle.physPos.dot(axis);
             const pCircle = { min: cProj - circle.radius, max: cProj + circle.radius };
             if (pPoly.max < pCircle.min || pCircle.max < pPoly.min) return null;
             const overlap = Math.min(pPoly.max - pCircle.min, pCircle.max - pPoly.min);
@@ -375,23 +401,28 @@ class Collisions {
 
         let closestVert = verts[0], closestDist = Infinity;
         for (const v of verts) {
-            const d = Vector.dist(circle.pos, v);
+            const d = circle.physPos.distance(v);
             if (d < closestDist) { closestDist = d; closestVert = v; }
         }
-        const voronoiAxis = Vector.sub(circle.pos, closestVert).normalize();
+        const voronoiAxis = circle.physPos.clone().sub(closestVert).normalize();
         const pPoly2 = Collisions.projectVerts(verts, voronoiAxis);
-        const cProj2 = circle.pos.dot(voronoiAxis);
+        const cProj2 = circle.physPos.dot(voronoiAxis);
         const pCircle2 = { min: cProj2 - circle.radius, max: cProj2 + circle.radius };
         if (pPoly2.max < pCircle2.min || pCircle2.max < pPoly2.min) return null;
         const overlap2 = Math.min(pPoly2.max - pCircle2.min, pCircle2.max - pPoly2.min);
         if (overlap2 < minOverlap) { minOverlap = overlap2; bestAxis = voronoiAxis; }
 
-        let normal = bestAxis.copy();
-        if (Vector.sub(polygon.pos, circle.pos).dot(normal) < 0) normal.mult(-1);
-        const contact = circle.pos.copy().add(normal.copy().mult(circle.radius));
-        return new Manifold(circle, polygon, normal, minOverlap, [contact]);
+        let normal = bestAxis.clone();
+        if (polygon.physPos.clone().sub(circle.physPos).dot(normal) < 0) normal.negate();
+        const contact = circle.physPos.clone().add(normal.clone().scale(circle.radius));
+        return new Manifold({ bodyA: circle, bodyB: polygon, normal, penetration: minOverlap, contacts: [contact] });
     }
 
+    /**
+     * @param {Vector[]} verts
+     * @param {Vector} axis
+     * @returns {{ min: number, max: number }}
+     */
     static projectVerts(verts, axis) {
         let min = Infinity, max = -Infinity;
         for (let v of verts) {
@@ -400,5 +431,84 @@ class Collisions {
             if (p > max) max = p;
         }
         return { min, max };
+    }
+}
+
+
+// SimpleSolver
+/**
+ * @typedef {"collision:enter" | "collision:stay" | "collision:exit"} CollisionEventType
+ */
+
+class SimpleSolver {
+    /**
+     * Collision pairs detected in the previous step, keyed by sorted body id pair.
+     * @type {Map<string, Manifold>}
+     */
+    _prevCollisions;
+
+    constructor() {
+        this._prevCollisions = new Map();
+    }
+
+    /**
+     * Syncs each body's physics state from its scene position, integrates
+     * physics, detects collisions, emits collision:enter / collision:stay /
+     * collision:exit on each involved body, then syncs physics state back to
+     * scene position.
+     *
+     * @param {Body[]} bodies
+     * @param {number} dt
+     */
+    step(bodies, dt) {
+        // Sync scene transform → physics state so external position changes
+        // (teleports, initial placement) are picked up before integration.
+        for (const body of bodies) {
+            body.physPos.copy(body.getWorldPosition());
+            body.physAngle = body.getWorldAngle();
+        }
+
+        // Integrate forces and velocities
+        for (const body of bodies) {
+            body.physicsUpdate(dt);
+        }
+
+        // Detect collisions
+        /** @type {Map<string, Manifold>} */
+        const current = new Map();
+
+        for (let i = 0; i < bodies.length; i++) {
+            for (let j = i + 1; j < bodies.length; j++) {
+                const a = bodies[i];
+                const b = bodies[j];
+                const manifold = Collisions.findCollision(a, b);
+                if (!manifold) continue;
+                const key = a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
+                current.set(key, manifold);
+            }
+        }
+
+        for (const [key, manifold] of current) {
+            /** @type {CollisionEventType} */
+            const type = this._prevCollisions.has(key) ? "collision:stay" : "collision:enter";
+            manifold.bodyA.emit(type, manifold);
+            manifold.bodyB.emit(type, manifold);
+        }
+
+        for (const [key, manifold] of this._prevCollisions) {
+            if (!current.has(key)) {
+                manifold.bodyA.emit("collision:exit", manifold);
+                manifold.bodyB.emit("collision:exit", manifold);
+            }
+        }
+
+        this._prevCollisions = current;
+
+        // Sync physics state → scene transform (includes positional corrections
+        // from collision resolution applied during event handlers above)
+        for (const body of bodies) {
+            body.setWorldPosition(body.physPos);
+            body.setWorldAngle(body.physAngle);
+        }
     }
 }
