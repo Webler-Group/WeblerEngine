@@ -1,13 +1,77 @@
 /**
- * @typedef {Object} BodyParams
- * @property {number} [mass=1]
- * @property {number} [inertia=1000]
+ * @typedef {{ mass?: number, inertia?: number, type?: "Circle" | "Polygon" }} BodyParams
  */
 
+
 class Body extends SceneNode {
-    /** @param {BodyParams} [params] */
-    constructor({ mass = 1, inertia = 1000 } = {}) {
+    /**
+     * @type {Vector}
+     */
+    physPos;
+    /**
+     * @type {Vector}
+     */
+    vel;
+    /**
+     * @type {Vector}
+     */
+    acc;
+    /**
+     * @type {number}
+     */
+    physAngle;
+    /**
+     * @type {number}
+     */
+    angVel;
+    /**
+     * @type {number}
+     */
+    angAcc;
+    /**
+     * @type {number}
+     */
+    mass;
+    /**
+     * @type {number}
+     */
+    invMass;
+    /**
+     * @type {number}
+     */
+    inertia;
+    /**
+     * @type {number}
+     */
+    invInertia;
+    /**
+     * @type {Vector}
+     */
+    force;
+    /**
+     * @type {number}
+     */
+    torque;
+    /**
+     * @type {number}
+     */
+    restitution;
+    /**
+     * @type {number}
+     */
+    friction;
+    /**
+     * @type {"Circle" | "Polygon"}
+     */
+    type;
+
+    /**
+     * @param {BodyParams} params
+     */
+    constructor(params = {}) {
         super();
+        const mass = params.mass ?? 1;
+        const inertia = params.inertia ?? 1000;
         this.physPos = new Vector(0, 0);
         this.vel = new Vector(0, 0);
         this.acc = new Vector(0, 0);
@@ -22,6 +86,7 @@ class Body extends SceneNode {
         this.torque = 0;
         this.restitution = 0.2;
         this.friction = 0.4;
+        this.type = params.type;
     }
     setStatic() {
         this.mass = 0; this.invMass = 0;
@@ -56,43 +121,64 @@ class Body extends SceneNode {
 
 
 // Bodies
-// Circle
+/**
+ * @typedef {{ mass?: number, restitution?: number, friction?: number }} MaterialParams
+ */
+
+/**
+ * @typedef {BodyParams & MaterialParams & { radius: number }} CircleParams
+ */
 class Circle extends Body {
-    constructor(x, y, radius, mass = 1, material = {}) {
-        const inertia = 0.5 * mass * radius * radius;
-        super(x, y, mass, inertia);
-        this.radius = radius;
-        this.type = "Circle";
-        if (material.restitution !== undefined) this.restitution = material.restitution;
-        if (material.friction !== undefined) this.friction = material.friction;
-    }
-    draw(ctx) {
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.rotate(this.angle);
-        if (this.render) {
-            this.render(ctx);
-            ctx.restore();
-            return;
-        }
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius, 0, 2 * Math.PI);
-        ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
-        ctx.fill();
-        ctx.strokeStyle = "#ccc";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(this.radius, 0);
-        ctx.stroke();
-        ctx.restore();
+    /**
+     * @type {number}
+     */
+    radius;
+    /**
+     * @type {number}
+     */
+    restitution;
+    /**
+     * @type {number}
+     */
+    friction;
+
+    /**
+     * @param {CircleParams} params
+     */
+    constructor(params = {}) {
+        const mass = params.mass ?? 1;
+        const inertia = 0.5 * mass * params.radius * params.radius;
+        super({ mass, inertia, type: "Circle" });
+        this.radius = params.radius;
+        if (params.restitution !== undefined) this.restitution = params.restitution;
+        if (params.friction !== undefined) this.friction = params.friction;
     }
 }
 
-// Polygon 
+// Polygon
+/**
+ * @typedef {BodyParams & MaterialParams & { vertices: Vector[] }} PolygonParams
+ */
 class Polygon extends Body {
-    constructor(x, y, vertices, mass = 1, material = {}) {
+    /**
+     * @type {Vector[]}
+     */
+    vertices;
+    /**
+     * @type {number}
+     */
+    restitution;
+    /**
+     * @type {number}
+     */
+    friction;
+
+    /**
+     * @param {PolygonParams} params
+     */
+    constructor(params = {}) {
+        const mass = params.mass ?? 1;
+        const vertices = params.vertices;
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (let v of vertices) {
             minX = Math.min(minX, v.x); minY = Math.min(minY, v.y);
@@ -100,45 +186,19 @@ class Polygon extends Body {
         }
         const width = maxX - minX, height = maxY - minY;
         const inertia = (1 / 12) * mass * (width * width + height * height);
-        super(x, y, mass, inertia);
+        super({ mass, inertia, type: "Polygon" });
         this.vertices = vertices;
-        this.type = "Polygon";
-        if (material.restitution !== undefined) this.restitution = material.restitution;
-        if (material.friction !== undefined) this.friction = material.friction;
+        if (params.restitution !== undefined) this.restitution = params.restitution;
+        if (params.friction !== undefined) this.friction = params.friction;
     }
     getWorldVertices() {
         const worldVertices = [];
         for (let i = 0; i < this.vertices.length; i++) {
-            const v = this.vertices[i].copy();
-            v.rotate(this.angle);
-            v.add(this.pos);
+            const v = this.vertices[i].clone();
+            v.rotate(this.physAngle);
+            v.add(this.physPos);
             worldVertices.push(v);
         }
         return worldVertices;
     }
-    draw(ctx) {
-        ctx.save();
-        ctx.translate(this.pos.x, this.pos.y);
-        ctx.rotate(this.angle);
-        if (this.render) {
-            this.render(ctx);
-            ctx.restore();
-            return;
-        }
-        ctx.beginPath();
-        if (this.vertices.length > 0) {
-            ctx.moveTo(this.vertices[0].x, this.vertices[0].y);
-            for (let i = 1; i < this.vertices.length; i++) {
-                ctx.lineTo(this.vertices[i].x, this.vertices[i].y);
-            }
-            ctx.closePath();
-        }
-        ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
-        ctx.fill();
-        ctx.strokeStyle = "#aaa";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.restore();
-    }
 }
-
