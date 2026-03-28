@@ -45,7 +45,7 @@ class Body extends SceneNode {
         this.physAngle += this.angVel * dt;
     }
     clearForces() { this.force.set(0, 0); this.torque = 0; }
-    update(dt) {
+    physicsUpdate(dt) {
         if (this.invMass === 0) return;
         this.integrateVelocity(dt);
         this.integratePosition(dt);
