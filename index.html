@@ -17,7 +17,7 @@
     <script src="src/physics.js"></script>
 
     <script>
-        const W = 1200, H = 700;
+        const W = 1600, H = 700;
         const canvas = document.querySelector("canvas");
         canvas.width = W;
         canvas.height = H;
@@ -31,7 +31,9 @@
             pointer: canvas
         });
 
-        im.addBinding("shape:insert", { device: "pointer", control: "pointer" });
+        im.addBinding("shape:insert", { device: "pointer",  control: "pointer" });
+        im.addBinding("car:left",     { device: "keyboard", control: "KeyA" });
+        im.addBinding("car:right",    { device: "keyboard", control: "KeyD" });
 
         const GRAVITY = new Vector(0, 500);
 
@@ -54,6 +56,56 @@
 
             start() { im.onAction("shape:insert", "start", this.handleInsert); }
             destroy() { im.offAction("shape:insert", "start", this.handleInsert); }
+        }
+
+        class CarController extends SceneNode {
+            constructor(im, leftWheel, rightWheel) {
+                super();
+                this.im = im;
+                this.leftWheel = leftWheel;
+                this.rightWheel = rightWheel;
+                this._left  = false;
+                this._right = false;
+                this._onLeftStart  = () => { this._left  = true;  };
+                this._onLeftEnd    = () => { this._left  = false; };
+                this._onRightStart = () => { this._right = true;  };
+                this._onRightEnd   = () => { this._right = false; };
+            }
+
+            start() {
+                this.im.onAction("car:left",  "start", this._onLeftStart);
+                this.im.onAction("car:left",  "end",   this._onLeftEnd);
+                this.im.onAction("car:right", "start", this._onRightStart);
+                this.im.onAction("car:right", "end",   this._onRightEnd);
+            }
+
+            update(dt) {
+                const driveForce  = 1000; // N — applied at wheel top
+                const frictionDamp = 5;   // angular velocity decay rate (rad/s per rad/s per second)
+
+                for (const wheel of [this.leftWheel, this.rightWheel]) {
+                    // Rolling friction — damps spin whether driving or coasting
+                    wheel.angVel *= Math.max(0, 1 - frictionDamp * dt);
+
+                    if (this._left || this._right) {
+                        const sign = this._right ? 1 : -1;
+                        const r = wheel.radius;
+                        // Force at the wheel top: (±F, 0) × r_top=(0,−r)
+                        //   torque = −(−r) × (±F) = ±r·F  → clockwise for right, ccw for left
+                        wheel.applyForceAtPoint(
+                            new Vector(sign * driveForce, 0),
+                            new Vector(wheel.physPos.x, wheel.physPos.y - r)
+                        );
+                    }
+                }
+            }
+
+            destroy() {
+                this.im.offAction("car:left",  "start", this._onLeftStart);
+                this.im.offAction("car:left",  "end",   this._onLeftEnd);
+                this.im.offAction("car:right", "start", this._onRightStart);
+                this.im.offAction("car:right", "end",   this._onRightEnd);
+            }
         }
 
         // ─── Constraint drawables ────────────────────────────────────────────
@@ -215,6 +267,153 @@
             }
         }
 
+        class RevoluteConstraintDrawable extends Drawable {
+            /** @type {RevoluteConstraint} */
+            constraint;
+
+            /**
+             * @param {RevoluteConstraint} constraint
+             * @param {DrawableParams} params
+             */
+            constructor(constraint, params = {}) {
+                super(params);
+                this.constraint = constraint;
+            }
+
+            /** @param {CanvasRenderingContext2D} ctx */
+            draw(ctx) {
+                const c = this.constraint;
+                const wA = c.getWorldAnchor(c.bodyA, c.localA);
+                const wB = c.getWorldAnchor(c.bodyB, c.localB);
+                const mx = (wA.x + wB.x) / 2, my = (wA.y + wB.y) / 2;
+                ctx.strokeStyle = "#ff8800";
+                ctx.fillStyle = "#ff8800";
+                ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.arc(mx, my, 7, 0, Math.PI * 2); ctx.stroke();
+                ctx.beginPath(); ctx.arc(mx, my, 2.5, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+
+        class AngleConstraintDrawable extends Drawable {
+            /** @type {AngleConstraint} */
+            constraint;
+
+            /**
+             * @param {AngleConstraint} constraint
+             * @param {DrawableParams} params
+             */
+            constructor(constraint, params = {}) {
+                super(params);
+                this.constraint = constraint;
+            }
+
+            /** @param {CanvasRenderingContext2D} ctx */
+            draw(ctx) {
+                const c = this.constraint;
+                const a = c.bodyA, b = c.bodyB;
+                ctx.strokeStyle = "rgba(170, 68, 255, 0.6)";
+                ctx.lineWidth = 1.5;
+                const r = 18;
+                // Arc indicator on each body
+                ctx.beginPath(); ctx.arc(a.physPos.x, a.physPos.y, r, a.physAngle - 0.4, a.physAngle + 0.4); ctx.stroke();
+                ctx.beginPath(); ctx.arc(b.physPos.x, b.physPos.y, r, b.physAngle - 0.4, b.physAngle + 0.4); ctx.stroke();
+                // Dashed line connecting the two bodies
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = "rgba(170, 68, 255, 0.3)";
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(a.physPos.x, a.physPos.y);
+                ctx.lineTo(b.physPos.x, b.physPos.y);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+
+        class AngleLimitConstraintDrawable extends Drawable {
+            /** @type {AngleLimitConstraint} */
+            constraint;
+
+            /**
+             * @param {AngleLimitConstraint} constraint
+             * @param {DrawableParams} params
+             */
+            constructor(constraint, params = {}) {
+                super(params);
+                this.constraint = constraint;
+            }
+
+            /** @param {CanvasRenderingContext2D} ctx */
+            draw(ctx) {
+                const c = this.constraint;
+                const a = c.bodyA;
+                const r = 22;
+                // Allowed range filled arc
+                ctx.fillStyle = "rgba(236, 72, 153, 0.12)";
+                ctx.beginPath();
+                ctx.moveTo(a.physPos.x, a.physPos.y);
+                ctx.arc(a.physPos.x, a.physPos.y, r, a.physAngle + c.minAngle, a.physAngle + c.maxAngle);
+                ctx.closePath();
+                ctx.fill();
+                // Arc outline
+                ctx.strokeStyle = "rgba(236, 72, 153, 0.5)";
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(a.physPos.x, a.physPos.y, r, a.physAngle + c.minAngle, a.physAngle + c.maxAngle);
+                ctx.stroke();
+                // Limit edge lines
+                ctx.strokeStyle = "rgba(236, 72, 153, 0.4)";
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(a.physPos.x, a.physPos.y);
+                ctx.lineTo(a.physPos.x + r * Math.cos(a.physAngle + c.minAngle), a.physPos.y + r * Math.sin(a.physAngle + c.minAngle));
+                ctx.moveTo(a.physPos.x, a.physPos.y);
+                ctx.lineTo(a.physPos.x + r * Math.cos(a.physAngle + c.maxAngle), a.physPos.y + r * Math.sin(a.physAngle + c.maxAngle));
+                ctx.stroke();
+            }
+        }
+
+        class MotorConstraintDrawable extends Drawable {
+            /** @type {MotorConstraint} */
+            constraint;
+
+            /**
+             * @param {MotorConstraint} constraint
+             * @param {DrawableParams} params
+             */
+            constructor(constraint, params = {}) {
+                super(params);
+                this.constraint = constraint;
+            }
+
+            /** @param {CanvasRenderingContext2D} ctx */
+            draw(ctx) {
+                const b = this.constraint.bodyB;
+                const speed = this.constraint.speed;
+                const r = 18;
+                const startAngle = b.physAngle;
+                const sweep = speed >= 0 ? Math.PI * 1.4 : -Math.PI * 1.4;
+                const endAngle = startAngle + sweep;
+
+                ctx.strokeStyle = "rgba(139, 92, 246, 0.7)";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(b.physPos.x, b.physPos.y, r, startAngle, endAngle, speed < 0);
+                ctx.stroke();
+
+                // Arrowhead at end of arc
+                const tipX = b.physPos.x + r * Math.cos(endAngle);
+                const tipY = b.physPos.y + r * Math.sin(endAngle);
+                const tanDir = speed >= 0 ? endAngle + Math.PI / 2 : endAngle - Math.PI / 2;
+                ctx.fillStyle = "rgba(139, 92, 246, 0.8)";
+                ctx.beginPath();
+                ctx.moveTo(tipX, tipY);
+                ctx.lineTo(tipX + 5 * Math.cos(tanDir - 0.5), tipY + 5 * Math.sin(tanDir - 0.5));
+                ctx.lineTo(tipX + 5 * Math.cos(tanDir + 0.5), tipY + 5 * Math.sin(tanDir + 0.5));
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+
         // ─── Body & constraint factories ─────────────────────────────────────
 
         function makeCircle(scene, x, y, radius, color, params = {}) {
@@ -291,6 +490,76 @@
             return constraint;
         }
 
+        function makeRevolute(scene, bodyA, bodyB, worldAnchor, camera) {
+            const constraint = new RevoluteConstraint(bodyA, bodyB, worldAnchor);
+            scene.addNode(constraint);
+            scene.addNode(new RevoluteConstraintDrawable(constraint, { camera, zIndex: 0 }));
+            return constraint;
+        }
+
+        function makeAngleConstraint(scene, bodyA, bodyB, camera, targetAngle = null) {
+            const constraint = new AngleConstraint(bodyA, bodyB, targetAngle);
+            scene.addNode(constraint);
+            scene.addNode(new AngleConstraintDrawable(constraint, { camera, zIndex: 0 }));
+            return constraint;
+        }
+
+        function makeAngleLimitConstraint(scene, bodyA, bodyB, minAngle, maxAngle, camera) {
+            const constraint = new AngleLimitConstraint(bodyA, bodyB, minAngle, maxAngle);
+            scene.addNode(constraint);
+            scene.addNode(new AngleLimitConstraintDrawable(constraint, { camera, zIndex: 0 }));
+            return constraint;
+        }
+
+        function makeMotor(scene, bodyA, bodyB, speed, maxTorque, camera) {
+            const constraint = new MotorConstraint(bodyA, bodyB, speed, maxTorque);
+            scene.addNode(constraint);
+            scene.addNode(new MotorConstraintDrawable(constraint, { camera, zIndex: 0 }));
+            return constraint;
+        }
+
+        function makeCar(scene, cx, cy, camera) {
+            const cw = 70, ch = 14;   // chassis half-extents
+            const offX = 55, offY = 45; // wheel offset from chassis centre
+            const wheelR = 24;
+            const lz = new Vector(0, 0);
+            const opts = { stiffness: 120, damping: 10 }; // restLength auto from initial dist
+
+            // ── Chassis (plain box) ────────────────────────────────────────
+            const cverts = [new Vector(-cw,-ch), new Vector(cw,-ch), new Vector(cw,ch), new Vector(-cw,ch)];
+            const chassis = new Body({ vertices: cverts, mass: 8, type: "Polygon", restitution: 0.1, friction: 0.5 });
+            chassis.physPos.set(cx, cy); chassis.position.set(cx, cy);
+            scene.addNode(chassis);
+            const chassisVis = new PolygonDrawable({ vertices: cverts, fillColor: "#546e7a", strokeColor: "rgba(255,255,255,0.35)", lineWidth: 2, camera, zIndex: 2 });
+            chassisVis.setParent(chassis); scene.addNode(chassisVis);
+
+            // ── Wheels ─────────────────────────────────────────────────────
+            function makeWheelAt(wx) {
+                const wheel = new Body({ radius: wheelR, mass: 1.5, type: "Circle", restitution: 0.2, friction: 1.0 });
+                wheel.physPos.set(wx, cy + offY); wheel.position.set(wx, cy + offY);
+                scene.addNode(wheel);
+                const vis = new CircleDrawable({ radius: wheelR, fillColor: "#37474f", strokeColor: "#78909c", lineWidth: 3, camera, zIndex: 2 });
+                vis.setParent(wheel); scene.addNode(vis);
+                return wheel;
+            }
+
+            const leftWheel  = makeWheelAt(cx - offX);
+            const rightWheel = makeWheelAt(cx + offX);
+
+            // ── Two springs per wheel forming a V from the chassis bottom ──
+            // Inner anchor directly above wheel; outer anchor at chassis corner.
+            // restLength is captured automatically from the initial positions.
+            makeConstraint(scene, chassis, leftWheel,  new Vector(-offX, ch), lz, camera);
+            makeConstraint(scene, chassis, leftWheel,  new Vector(-cw,   ch), lz, camera);
+            makeConstraint(scene, chassis, rightWheel, new Vector( offX, ch), lz, camera);
+            makeConstraint(scene, chassis, rightWheel, new Vector( cw,   ch), lz, camera);
+
+            // Wheels don't collide with each other (solver already excludes chassis↔wheel via SpringConstraint)
+            solver.excludeCollision(leftWheel, rightWheel);
+
+            return { leftWheel, rightWheel };
+        }
+
         // ─── Scene setup ──────────────────────────────────────────────────────
 
         const solver = new Solver();
@@ -315,11 +584,7 @@
             makeBox(scene, W - T, H / 2, T * 2, H,    "#616161", { isStatic: true, camera });
             makeBox(scene, W / 2, T,     W,    T * 2, "#616161", { isStatic: true, camera });
 
-            // Thin dividers
-            makeBox(scene, 400, H / 2, 6, H, "#2a2a3a", { isStatic: true, camera });
-            makeBox(scene, 800, H / 2, 6, H, "#2a2a3a", { isStatic: true, camera });
-
-            // ── Distance Constraints (x: 30–397) ─────────────────────────────
+            // ── Distance Constraints ──────────────────────────────────────────
 
             // 3-link pendulum chain
             const pin1 = makePin(scene, 155, 50, camera);
@@ -357,30 +622,76 @@
             makeSpring(scene, pin7, sbox, zero, new Vector( 35, -11), { stiffness: 140, damping: 9, restLength: 360 }, camera);
             makeCircle(scene, 600, 290, 14, "#f39c12", { mass: 2, vx: 45, camera });
 
-            // ── Rope Constraints (x: 803–1185) ───────────────────────────────
+            // ── Rope Constraints (x: 803–1197) ───────────────────────────────
             // Ropes are one-sided: they only pull when taut (dist >= maxLength).
             // Unlike distance rods, the distance is free to shrink below maxLength.
 
             // A: Free-fall then snap — ball starts very close to pin (big slack),
             //    falls freely while rope droops, snaps taut and swings.
-            const pin8   = makePin(scene, 885, 50, camera);
-            const rball1 = makeCircle(scene, 885, 90, 15, "#e74c3c", { mass: 2, camera });
+            const pin8   = makePin(scene, 855, 50, camera);
+            const rball1 = makeCircle(scene, 855, 90, 15, "#e74c3c", { mass: 2, camera });
             makeRope(scene, pin8, rball1, zero, zero, 240, camera);
 
-            // B: Pendulum going slack — enough lateral velocity to rise above
-            //    horizontal; rope goes slack at the top, ball flies free briefly,
-            //    then rope snaps taut again on the way back down.
-            const pin9   = makePin(scene, 1035, 50, camera);
-            const rball2 = makeCircle(scene, 1035, 250, 15, "#3498db", { mass: 2, vx: 510, camera });
-            makeRope(scene, pin9, rball2, zero, zero, 200, camera);
+            // B: Rope bridge — left and right static anchors; 3 hanging nodes
+            //    connected by ropes slightly longer than the gap so they sag
+            //    into a catenary. Shows ropes allow distance < maxLength.
+            const bridgeL = makePin(scene, 930, 100, camera);
+            const bridgeR = makePin(scene, 1110, 100, camera);
+            const bnode1  = makeBox(scene, 975,  130, 22, 10, "#3498db", { mass: 1.5, camera });
+            const bnode2  = makeBox(scene, 1020, 130, 22, 10, "#2980b9", { mass: 1.5, camera });
+            const bnode3  = makeBox(scene, 1065, 130, 22, 10, "#1a6fa0", { mass: 1.5, camera });
+            // Segment length ~54px for ~45px gap (20% slack)
+            makeRope(scene, bridgeL, bnode1,  zero, zero, 54, camera);
+            makeRope(scene, bnode1,  bnode2,  zero, zero, 54, camera);
+            makeRope(scene, bnode2,  bnode3,  zero, zero, 54, camera);
+            makeRope(scene, bnode3,  bridgeR, zero, zero, 54, camera);
 
             // C: 2-link chain — bottom link given lateral velocity; inner link
             //    visibly droops slack when swinging inward, snaps straight outward.
-            const pin10  = makePin(scene, 1140, 50, camera);
-            const rball3 = makeCircle(scene, 1140, 190, 13, "#9b59b6", { mass: 1.5, camera });
-            const rball4 = makeCircle(scene, 1140, 350, 13, "#8bc34a", { mass: 1.5, vx: 130, camera });
+            const pin10  = makePin(scene, 1160, 50, camera);
+            const rball3 = makeCircle(scene, 1160, 190, 13, "#9b59b6", { mass: 1.5, camera });
+            const rball4 = makeCircle(scene, 1160, 350, 13, "#8bc34a", { mass: 1.5, vx: 130, camera });
             makeRope(scene, pin10,  rball3, zero, zero, 150, camera);
             makeRope(scene, rball3, rball4, zero, zero, 165, camera);
+
+            // ── Joint Constraints (x: 1203–1585) ─────────────────────────────
+
+            // 1: Revolute hinge — arm swings freely around a fixed pin
+            const rev_pin = makePin(scene, 1255, 80, camera);
+            const rev_arm = makeBox(scene, 1255, 140, 16, 120, "#e74c3c", { mass: 3, camera });
+            makeRevolute(scene, rev_pin, rev_arm, new Vector(1255, 80), camera);
+
+            // 2: Motor — spinning wheel driven by a motor on a fixed axle;
+            //    small marker circle shows the rotation.
+            const mot_axle = makePin(scene, 1360, 310, camera);
+            const mot_wheel = makeCircle(scene, 1360, 310, 42, "#3498db", { mass: 6, camera });
+            const mot_marker = makeCircle(scene, 1395, 310, 6, "#ffffff", { mass: 0.01, camera });
+            makeRevolute(scene, mot_axle, mot_wheel,  new Vector(1360, 310), camera);
+            makeRevolute(scene, mot_wheel, mot_marker, new Vector(1395, 310), camera);
+            makeMotor(scene, mot_axle, mot_wheel, 4, 3000, camera);
+
+            // 3: Angle limit — two-link arm with elbow joint stops at ±100°
+            const al_pin   = makePin(scene, 1470, 80, camera);
+            const al_upper = makeBox(scene, 1470, 135, 14, 110, "#f39c12", { mass: 2, camera });
+            const al_lower = makeBox(scene, 1470, 240, 14, 100, "#e67e22", { mass: 2, camera });
+            makeRevolute(scene, al_pin,   al_upper, new Vector(1470, 80),  camera);
+            makeRevolute(scene, al_upper, al_lower, new Vector(1470, 190), camera);
+            makeAngleLimitConstraint(scene, al_upper, al_lower, -Math.PI * 5 / 9, Math.PI * 5 / 9, camera);
+
+            // 4: Angle constraint — two pendulums forced to keep the same
+            //    relative rotation; push one and the other spins in sync.
+            const ac_pin1  = makePin(scene, 1530, 80, camera);
+            const ac_pin2  = makePin(scene, 1565, 80, camera);
+            const ac_ball1 = makeBox(scene, 1510, 240, 28, 16, "#9b59b6", { mass: 2, vx: -90, camera });
+            const ac_ball2 = makeBox(scene, 1565, 240, 28, 16, "#1abc9c", { mass: 2, camera });
+            makeConstraint(scene, ac_pin1, ac_ball1, zero, zero, camera);
+            makeConstraint(scene, ac_pin2, ac_ball2, zero, zero, camera);
+            makeAngleConstraint(scene, ac_ball1, ac_ball2, camera);
+
+            // ── Car (x: 1203–1585, lower half) — A/D to drive ────────────────
+            const { leftWheel, rightWheel } = makeCar(scene, 1390, 450, camera);
+            const carCtrl = new CarController(im, leftWheel, rightWheel);
+            scene.addNode(carCtrl);
 
             const pointerPosControl = new PointerPosition(im.getDevice("pointer"), { camera });
             pointerPosControl.name = "pointer";

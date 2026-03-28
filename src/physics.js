@@ -1208,19 +1208,36 @@ class RopeConstraint extends Constraint {
     }
 }
 
-
-
 // ═══════════════════════════════════════════════════════════════
 // Revolute Constraint (Pin / Hinge)
-// ═══════════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════════
-// Revolute Constraint (Pin / Hinge)
-// Forces two bodies to share a common point in space. 
+// Forces two bodies to share a common point in space.
 // They can freely rotate around this shared point, like a door hinge.
 // ═══════════════════════════════════════════════════════════════
 
 class RevoluteConstraint extends Constraint {
+    /** @type {Vector} Local anchor on bodyA */
+    localA;
+    /** @type {Vector} Local anchor on bodyB */
+    localB;
+    /** @type {Vector} World-space anchor on bodyA (computed in preStep) */
+    worldA;
+    /** @type {Vector} World-space anchor on bodyB (computed in preStep) */
+    worldB;
+    /** @type {Vector} Lever arm from bodyA centre to worldA */
+    rA;
+    /** @type {Vector} Lever arm from bodyB centre to worldB */
+    rB;
+    /** @type {number} Accumulated impulse X for warm starting */
+    accImpulseX;
+    /** @type {number} Accumulated impulse Y for warm starting */
+    accImpulseY;
+    /** @type {number} Mass matrix K[0][0] */
+    K00;
+    /** @type {number} Mass matrix K[0][1] */
+    K01;
+    /** @type {number} Mass matrix K[1][1] */
+    K11;
+
     /**
      * @param {Body} bodyA - First body
      * @param {Body} bodyB - Second body
@@ -1228,19 +1245,18 @@ class RevoluteConstraint extends Constraint {
      */
     constructor(bodyA, bodyB, worldAnchor) {
         super(bodyA, bodyB);
-        // Convert the shared world hinge to each body's local space
         this.localA = this.worldToLocal(bodyA, worldAnchor);
         this.localB = this.worldToLocal(bodyB, worldAnchor);
         this.accImpulseX = 0;
         this.accImpulseY = 0;
     }
 
-    preStep(dt) {
+    preStep(_dt) {
         const a = this.bodyA, b = this.bodyB;
         this.worldA = this.getWorldAnchor(a, this.localA);
         this.worldB = this.getWorldAnchor(b, this.localB);
-        this.rA = Vector.sub(this.worldA, a.pos);
-        this.rB = Vector.sub(this.worldB, b.pos);
+        this.rA = this.worldA.clone().sub(a.physPos);
+        this.rB = this.worldB.clone().sub(b.physPos);
         const { rA, rB } = this;
         const mSum = a.invMass + b.invMass;
         this.K00 = mSum + a.invInertia * rA.y * rA.y + b.invInertia * rB.y * rB.y;
@@ -1275,10 +1291,10 @@ class RevoluteConstraint extends Constraint {
         const a = this.bodyA, b = this.bodyB;
         const wA = this.getWorldAnchor(a, this.localA);
         const wB = this.getWorldAnchor(b, this.localB);
-        const C = Vector.sub(wB, wA);
-        if (C.magSq() < 0.0001) return;
-        const rA = Vector.sub(wA, a.pos);
-        const rB = Vector.sub(wB, b.pos);
+        const C = wB.clone().sub(wA);
+        if (C.x * C.x + C.y * C.y < 0.0001) return;
+        const rA = wA.clone().sub(a.physPos);
+        const rB = wB.clone().sub(b.physPos);
         const mSum = a.invMass + b.invMass;
         const K00 = mSum + a.invInertia * rA.y * rA.y + b.invInertia * rB.y * rB.y;
         const K01 = -a.invInertia * rA.x * rA.y - b.invInertia * rB.x * rB.y;
@@ -1288,23 +1304,10 @@ class RevoluteConstraint extends Constraint {
         const invDet = 1 / det;
         const px = (K11 * (-C.x) - K01 * (-C.y)) * invDet * 0.2;
         const py = (-K01 * (-C.x) + K00 * (-C.y)) * invDet * 0.2;
-        a.pos.x -= px * a.invMass; a.pos.y -= py * a.invMass;
-        b.pos.x += px * b.invMass; b.pos.y += py * b.invMass;
-    }
-
-    draw(ctx) {
-        const mid = this.worldA.copy().add(this.worldB).div(2);
-        ctx.fillStyle = "#ff8800";
-        ctx.strokeStyle = "#ff8800";
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(mid.x, mid.y, 6, 0, Math.PI * 2); ctx.stroke();
-        ctx.beginPath(); ctx.arc(mid.x, mid.y, 2, 0, Math.PI * 2); ctx.fill();
+        a.physPos.x -= px * a.invMass; a.physPos.y -= py * a.invMass;
+        b.physPos.x += px * b.invMass; b.physPos.y += py * b.invMass;
     }
 }
-
-// ═══════════════════════════════════════════════════════════════
-// Angle Constraint
-// ═══════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════
 // Angle Constraint
@@ -1313,58 +1316,52 @@ class RevoluteConstraint extends Constraint {
 // ═══════════════════════════════════════════════════════════════
 
 class AngleConstraint extends Constraint {
+    /** @type {number} Target relative angle (bodyB.physAngle - bodyA.physAngle) */
+    targetAngle;
+    /** @type {number} Accumulated angular impulse for warm starting */
+    accImpulse;
+    /** @type {number} Effective rotational mass */
+    effectiveMass;
+
     /**
      * @param {Body} bodyA - First body
      * @param {Body} bodyB - Second body
-     * @param {number} targetAngle - Target relative angle. Uses current angle if null.
+     * @param {number|null} targetAngle - Target relative angle. Uses current angle if null.
      */
     constructor(bodyA, bodyB, targetAngle = null) {
         super(bodyA, bodyB);
-        this.targetAngle = targetAngle !== null ? targetAngle : bodyB.angle - bodyA.angle;
+        this.targetAngle = targetAngle !== null ? targetAngle : bodyB.physAngle - bodyA.physAngle;
         this.accImpulse = 0;
     }
-    preStep(dt) {
+
+    preStep(_dt) {
         const a = this.bodyA, b = this.bodyB;
         this.effectiveMass = a.invInertia + b.invInertia;
         if (this.effectiveMass > 0) this.effectiveMass = 1 / this.effectiveMass;
         a.angVel -= this.accImpulse * a.invInertia;
         b.angVel += this.accImpulse * b.invInertia;
     }
+
     solve() {
         const a = this.bodyA, b = this.bodyB;
-
         const Cdot = b.angVel - a.angVel;
         const lambda = -this.effectiveMass * Cdot;
         this.accImpulse += lambda;
-
         a.angVel -= lambda * a.invInertia;
         b.angVel += lambda * b.invInertia;
     }
+
     correctPosition() {
         const a = this.bodyA, b = this.bodyB;
-        const C = b.angle - a.angle - this.targetAngle;
-
+        const C = b.physAngle - a.physAngle - this.targetAngle;
         if (Math.abs(C) < 0.001) return;
         const K = a.invInertia + b.invInertia;
         if (K === 0) return;
         const corr = -C / K * 0.2;
-        a.angle -= corr * a.invInertia;
-        b.angle += corr * b.invInertia;
-    }
-    draw(ctx) {
-        const a = this.bodyA, b = this.bodyB;
-        ctx.strokeStyle = "#aa44ff";
-        ctx.lineWidth = 1;
-        const r = 15;
-
-        ctx.beginPath(); ctx.arc(a.pos.x, a.pos.y, r, a.angle - 0.3, a.angle + 0.3); ctx.stroke();
-        ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, r, b.angle - 0.3, b.angle + 0.3); ctx.stroke();
+        a.physAngle -= corr * a.invInertia;
+        b.physAngle += corr * b.invInertia;
     }
 }
-
-// ═══════════════════════════════════════════════════════════════
-// Angle Limit Constraint (Joint Limits)
-// ═══════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════
 // Angle Limit Constraint (Joint Limits)
@@ -1373,6 +1370,15 @@ class AngleConstraint extends Constraint {
 // ═══════════════════════════════════════════════════════════════
 
 class AngleLimitConstraint extends Constraint {
+    /** @type {number} Minimum allowed relative angle (radians) */
+    minAngle;
+    /** @type {number} Maximum allowed relative angle (radians) */
+    maxAngle;
+    /** @type {number} Accumulated angular impulse for warm starting */
+    accImpulse;
+    /** @type {number} Effective rotational mass */
+    effectiveMass;
+
     /**
      * @param {Body} bodyA - First body
      * @param {Body} bodyB - Second body
@@ -1386,13 +1392,13 @@ class AngleLimitConstraint extends Constraint {
         this.accImpulse = 0;
     }
 
-    preStep(dt) {
+    preStep(_dt) {
         const a = this.bodyA, b = this.bodyB;
         this.effectiveMass = a.invInertia + b.invInertia;
         if (this.effectiveMass > 0) this.effectiveMass = 1 / this.effectiveMass;
 
         // Determine if limit is active; if not, reset warm start
-        let rel = b.angle - a.angle;
+        let rel = b.physAngle - a.physAngle;
         while (rel > Math.PI) rel -= Math.PI * 2;
         while (rel < -Math.PI) rel += Math.PI * 2;
         if (rel >= this.minAngle && rel <= this.maxAngle) {
@@ -1406,8 +1412,7 @@ class AngleLimitConstraint extends Constraint {
 
     solve() {
         const a = this.bodyA, b = this.bodyB;
-
-        let rel = b.angle - a.angle;
+        let rel = b.physAngle - a.physAngle;
         while (rel > Math.PI) rel -= Math.PI * 2;
         while (rel < -Math.PI) rel += Math.PI * 2;
 
@@ -1433,8 +1438,7 @@ class AngleLimitConstraint extends Constraint {
 
     correctPosition() {
         const a = this.bodyA, b = this.bodyB;
-
-        let rel = b.angle - a.angle;
+        let rel = b.physAngle - a.physAngle;
         while (rel > Math.PI) rel -= Math.PI * 2;
         while (rel < -Math.PI) rel += Math.PI * 2;
 
@@ -1446,24 +1450,26 @@ class AngleLimitConstraint extends Constraint {
         const K = a.invInertia + b.invInertia;
         if (K === 0) return;
         const corr = -C / K * 0.3;
-        a.angle -= corr * a.invInertia;
-        b.angle += corr * b.invInertia;
-    }
-
-    draw(ctx) {
-        // Subtle arc showing the allowed angle range on bodyA
-        const a = this.bodyA;
-        ctx.strokeStyle = "rgba(236, 72, 153, 0.3)";
-        ctx.lineWidth = 1;
-        const r = 18;
-        ctx.beginPath();
-        ctx.arc(a.pos.x, a.pos.y, r, a.angle + this.minAngle, a.angle + this.maxAngle);
-        ctx.stroke();
+        a.physAngle -= corr * a.invInertia;
+        b.physAngle += corr * b.invInertia;
     }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Motor Constraint
+// Drives a target relative angular velocity between two bodies.
+// ═══════════════════════════════════════════════════════════════
 
 class MotorConstraint extends Constraint {
+    /** @type {number} Target relative angular velocity (rad/s) */
+    speed;
+    /** @type {number} Maximum torque the motor can exert */
+    maxTorque;
+    /** @type {number} Accumulated angular impulse for warm starting */
+    accImpulse;
+    /** @type {number} Effective rotational mass */
+    effectiveMass;
+
     /**
      * @param {Body} bodyA - First body
      * @param {Body} bodyB - Second body
@@ -1472,12 +1478,12 @@ class MotorConstraint extends Constraint {
      */
     constructor(bodyA, bodyB, speed = 2, maxTorque = 1000) {
         super(bodyA, bodyB);
-        this.speed = speed;       // Target relative angular velocity (rad/s)
+        this.speed = speed;
         this.maxTorque = maxTorque;
         this.accImpulse = 0;
     }
 
-    preStep(dt) {
+    preStep(_dt) {
         const a = this.bodyA, b = this.bodyB;
         this.effectiveMass = a.invInertia + b.invInertia;
         if (this.effectiveMass > 0) this.effectiveMass = 1 / this.effectiveMass;
@@ -1502,20 +1508,4 @@ class MotorConstraint extends Constraint {
     }
 
     correctPosition() { }
-
-    draw(ctx) {
-        const b = this.bodyB;
-        ctx.strokeStyle = "rgba(139, 92, 246, 0.5)";
-        ctx.lineWidth = 2;
-        const r = 14;
-        ctx.beginPath();
-        ctx.arc(b.pos.x, b.pos.y, r, b.angle, b.angle + Math.PI * 1.5);
-        ctx.stroke();
-        const ax = b.pos.x + r * Math.cos(b.angle + Math.PI * 1.5);
-        const ay = b.pos.y + r * Math.sin(b.angle + Math.PI * 1.5);
-        ctx.fillStyle = "rgba(139, 92, 246, 0.7)";
-        ctx.beginPath();
-        ctx.arc(ax, ay, 3, 0, Math.PI * 2);
-        ctx.fill();
-    }
 }
