@@ -435,85 +435,9 @@ class Collisions {
 }
 
 
-// SimpleSolver
 /**
  * @typedef {"collision:enter" | "collision:stay" | "collision:exit"} CollisionEventType
  */
-
-class SimpleSolver {
-    /**
-     * Collision pairs detected in the previous step, keyed by sorted body id pair.
-     * @type {Map<string, Manifold>}
-     */
-    _prevCollisions;
-
-    constructor() {
-        this._prevCollisions = new Map();
-    }
-
-    /**
-     * Syncs each body's physics state from its scene position, integrates
-     * physics, detects collisions, emits collision:enter / collision:stay /
-     * collision:exit on each involved body, then syncs physics state back to
-     * scene position.
-     *
-     * @param {Body[]} bodies
-     * @param {number} dt
-     */
-    step(bodies, dt) {
-        // Sync scene transform → physics state so external position changes
-        // (teleports, initial placement) are picked up before integration.
-        for (const body of bodies) {
-            body.physPos.copy(body.getWorldPosition());
-            body.physAngle = body.getWorldAngle();
-        }
-
-        // Integrate forces and velocities
-        for (const body of bodies) {
-            body.physicsUpdate(dt);
-        }
-
-        // Detect collisions
-        /** @type {Map<string, Manifold>} */
-        const current = new Map();
-
-        for (let i = 0; i < bodies.length; i++) {
-            for (let j = i + 1; j < bodies.length; j++) {
-                const a = bodies[i];
-                const b = bodies[j];
-                const manifold = Collisions.findCollision(a, b);
-                if (!manifold) continue;
-                const key = a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
-                current.set(key, manifold);
-            }
-        }
-
-        for (const [key, manifold] of current) {
-            /** @type {CollisionEventType} */
-            const type = this._prevCollisions.has(key) ? "collision:stay" : "collision:enter";
-            manifold.bodyA.emit(type, manifold);
-            manifold.bodyB.emit(type, manifold);
-        }
-
-        for (const [key, manifold] of this._prevCollisions) {
-            if (!current.has(key)) {
-                manifold.bodyA.emit("collision:exit", manifold);
-                manifold.bodyB.emit("collision:exit", manifold);
-            }
-        }
-
-        this._prevCollisions = current;
-
-        // Sync physics state → scene transform (includes positional corrections
-        // from collision resolution applied during event handlers above)
-        for (const body of bodies) {
-            body.setWorldPosition(body.physPos);
-            body.setWorldAngle(body.physAngle);
-        }
-    }
-}
-
-// Solver class
 
 class Solver {
     /**
@@ -524,10 +448,6 @@ class Solver {
      * @type {Manifold[]}
      */
     manifolds;
-    /**
-     * @type {any[]}
-     */
-    constraints;
     /**
      * @type {Set<string>}
      */
@@ -544,17 +464,8 @@ class Solver {
     constructor(iterations = 15) {
         this.iterations = iterations;
         this.manifolds = [];
-        this.constraints = [];
-        this.noCollide = new Set();
         this._prevCollisions = new Map();
-    }
-
-    /**
-     * @param {any} c
-     */
-    addConstraint(c) {
-        this.constraints.push(c);
-        this.excludeCollision(c.bodyA, c.bodyB);
+        this.noCollide = new Set();
     }
 
     /**
@@ -630,22 +541,29 @@ class Solver {
     }
 
     /**
+     * @param {Constraint[]} constraints
      * @param {number} dt
      */
-    preStepConstraints(dt) {
-        for (const c of this.constraints) c.preStep(dt);
+    preStepConstraints(constraints, dt) {
+        for (const c of constraints) c.preStep(dt);
     }
 
-    applySpringForces() {
-        for (const c of this.constraints) {
+    /**
+     * @param {Constraint[]} constraints
+     */
+    applySpringForces(constraints) {
+        for (const c of constraints) {
             if (c instanceof SpringConstraint) c.applyForce();
         }
     }
 
-    solve() {
+    /**
+     * @param {Constraint[]} constraints
+     */
+    solve(constraints) {
         for (let iter = 0; iter < this.iterations; iter++) {
             for (const m of this.manifolds) this.solveManifold(m);
-            for (const c of this.constraints) c.solve();
+            for (const c of constraints) c.solve();
         }
     }
 
@@ -687,7 +605,10 @@ class Solver {
         }
     }
 
-    correctPositions() {
+    /**
+     * @param {Constraint[]} constraints
+     */
+    correctPositions(constraints) {
         const percent = 0.4, slop = 0.01;
         for (const m of this.manifolds) {
             const a = m.bodyA, b = m.bodyB;
@@ -699,31 +620,36 @@ class Solver {
             b.physPos.x += m.normal.x * corr * b.invMass;
             b.physPos.y += m.normal.y * corr * b.invMass;
         }
-        for (const c of this.constraints) c.correctPosition();
+        for (const c of constraints) c.correctPosition();
     }
 
     /**
      * @param {Body[]} bodies
+     * @param {Constraint[]} constraints
      * @param {number} dt
      */
-    step(bodies, dt) {
+    step(bodies, constraints, dt) {
         // Sync scene transform → physics state
         for (const body of bodies) {
-            body.physPos.copy(body.position);
-            body.physAngle = body.angle;
+            body.physPos.copy(body.getWorldPosition());
+            body.physAngle = body.getWorldAngle();
+        }
+
+        for (const c of constraints) {
+            this.excludeCollision(c.bodyA, c.bodyB);
         }
 
         // 1. Apply spring / constraint forces
-        this.applySpringForces();
+        this.applySpringForces(constraints);
 
         // 2. Detect collisions and precompute contact data
         this.detectCollisions(bodies);
 
         // 3. Pre-step constraints
-        this.preStepConstraints(dt);
+        this.preStepConstraints(constraints, dt);
 
         // 4. Solve impulses
-        this.solve();
+        this.solve(constraints);
 
         // 5. Integrate positions and velocities
         for (const body of bodies) {
@@ -731,7 +657,7 @@ class Solver {
         }
 
         // 6. Correct positions (Baumgarte)
-        this.correctPositions();
+        this.correctPositions(constraints);
 
         // Emit collision:enter / collision:stay / collision:exit events
         /** @type {Map<string, Manifold>} */
@@ -759,6 +685,8 @@ class Solver {
 
         this._prevCollisions = current;
 
+        this.noCollide.clear();
+
         // Sync physics state → scene transform (includes positional corrections
         // from collision resolution applied during event handlers above)
         for (const body of bodies) {
@@ -778,39 +706,59 @@ class Solver {
 // how bodies can move relative to each other (e.g. distance, angle).
 // ═══════════════════════════════════════════════════════════════
 
-class Constraint {
+class Constraint extends SceneNode {
     /**
-     * @param {Body} bodyA - First body
-     * @param {Body} bodyB - Second body
+     * @type {Body}
+     */
+    bodyA;
+    /**
+     * @type {Body}
+     */
+    bodyB;
+
+    /**
+     * @param {Body} bodyA
+     * @param {Body} bodyB
      */
     constructor(bodyA, bodyB) {
+        super();
         this.bodyA = bodyA;
         this.bodyB = bodyB;
     }
 
-    preStep(dt) { }
+    /**
+     * @param {number} dt
+     */
+    preStep(_dt) { }
     solve() { }
     correctPosition() { }
-    draw(ctx) { }
 
+    /**
+     * Returns the world-space position of a local anchor point on a body.
+     * @param {Body} body
+     * @param {Vector} local  Anchor in body-local space.
+     * @returns {Vector}
+     */
     getWorldAnchor(body, local) {
-        const cos = Math.cos(body.angle), sin = Math.sin(body.angle);
+        const cos = Math.cos(body.physAngle), sin = Math.sin(body.physAngle);
         return new Vector(
-            body.pos.x + local.x * cos - local.y * sin,
-            body.pos.y + local.x * sin + local.y * cos
+            body.physPos.x + local.x * cos - local.y * sin,
+            body.physPos.y + local.x * sin + local.y * cos
         );
     }
 
+    /**
+     * Converts a world-space point to body-local space.
+     * @param {Body} body
+     * @param {Vector} world
+     * @returns {Vector}
+     */
     worldToLocal(body, world) {
-        const d = Vector.sub(world, body.pos);
-        const cos = Math.cos(-body.angle), sin = Math.sin(-body.angle);
+        const d = world.clone().sub(body.physPos);
+        const cos = Math.cos(-body.physAngle), sin = Math.sin(-body.physAngle);
         return new Vector(d.x * cos - d.y * sin, d.x * sin + d.y * cos);
     }
 }
-
-// ═══════════════════════════════════════════════════════════════
-// Distance Constraint (Rod)
-// ═══════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════
 // Distance Constraint (Rod / Stick)
@@ -818,35 +766,97 @@ class Constraint {
 // Useful for creating rigid bridges, pendulums, or connected structures.
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * @typedef {{ bodyA: Body, bodyB: Body, localAnchorA: Vector, localAnchorB: Vector, length?: number | null }} DistanceConstraintParams
+ */
+
 class DistanceConstraint extends Constraint {
+    /**
+     * Anchor point in bodyA's local space.
+     * @type {Vector}
+     */
+    localA;
+    /**
+     * Anchor point in bodyB's local space.
+     * @type {Vector}
+     */
+    localB;
+    /**
+     * Accumulated normal impulse across solver iterations (warm-starting).
+     * @type {number}
+     */
+    accImpulse;
+    /**
+     * Target distance between the two anchors in world units.
+     * @type {number}
+     */
+    targetLength;
+    /**
+     * World-space position of bodyA's anchor. Computed in preStep.
+     * @type {Vector}
+     */
+    worldA;
+    /**
+     * World-space position of bodyB's anchor. Computed in preStep.
+     * @type {Vector}
+     */
+    worldB;
+    /**
+     * Offset from bodyA's physPos to worldA. Computed in preStep.
+     * @type {Vector}
+     */
+    rA;
+    /**
+     * Offset from bodyB's physPos to worldB. Computed in preStep.
+     * @type {Vector}
+     */
+    rB;
+    /**
+     * Unit vector from worldA toward worldB. Computed in preStep.
+     * @type {Vector}
+     */
+    n;
+    /**
+     * Inverse of the constraint's effective mass along n. Computed in preStep.
+     * @type {number}
+     */
+    effectiveMass;
+
+    /**
+     * @param {Body} bodyA
+     * @param {Body} bodyB
+     * @param {Vector} localAnchorA  Anchor in bodyA's local space.
+     * @param {Vector} localAnchorB  Anchor in bodyB's local space.
+     * @param {number | null} [length]  Target distance; defaults to current anchor separation.
+     */
     constructor(bodyA, bodyB, localAnchorA, localAnchorB, length = null) {
         super(bodyA, bodyB);
         this.localA = localAnchorA;
         this.localB = localAnchorB;
-        this.accImpulse = 0; // Accumulated impulse across solver iterations
+        this.accImpulse = 0;
 
         if (length === null) {
-            // Calculate initial distance between anchors if no length given
             const wA = this.getWorldAnchor(bodyA, localAnchorA);
             const wB = this.getWorldAnchor(bodyB, localAnchorB);
-            this.targetLength = Vector.sub(wB, wA).mag();
+            this.targetLength = wB.clone().sub(wA).length();
         } else {
             this.targetLength = length;
         }
     }
 
-    preStep(dt) {
-        // 1. Calculate world positions of anchors
+    /**
+     * @param {number} _dt
+     */
+    preStep(_dt) {
         const a = this.bodyA, b = this.bodyB;
         this.worldA = this.getWorldAnchor(a, this.localA);
         this.worldB = this.getWorldAnchor(b, this.localB);
-        this.rA = Vector.sub(this.worldA, a.pos);
-        this.rB = Vector.sub(this.worldB, b.pos);
+        this.rA = this.worldA.clone().sub(a.physPos);
+        this.rB = this.worldB.clone().sub(b.physPos);
 
-        // 2. Determine pulling direction (normal n)
-        const delta = Vector.sub(this.worldB, this.worldA);
-        const dist = delta.mag();
-        this.n = dist > 0.0001 ? delta.copy().div(dist) : new Vector(1, 0);
+        const delta = this.worldB.clone().sub(this.worldA);
+        const dist = delta.length();
+        this.n = dist > 0.0001 ? delta.scale(1 / dist) : new Vector(1, 0);
 
         const rAxN = this.rA.x * this.n.y - this.rA.y * this.n.x;
         const rBxN = this.rB.x * this.n.y - this.rB.y * this.n.x;
@@ -884,37 +894,23 @@ class DistanceConstraint extends Constraint {
         const a = this.bodyA, b = this.bodyB;
         const wA = this.getWorldAnchor(a, this.localA);
         const wB = this.getWorldAnchor(b, this.localB);
-        const delta = Vector.sub(wB, wA);
-        const dist = delta.mag();
+        const delta = wB.clone().sub(wA);
+        const dist = delta.length();
         if (dist < 0.0001 && this.targetLength < 0.0001) return;
 
-        const n = dist > 0.0001 ? delta.copy().div(dist) : new Vector(1, 0);
+        const n = dist > 0.0001 ? delta.scale(1 / dist) : new Vector(1, 0);
         const C = dist - this.targetLength;
-        const rA = Vector.sub(wA, a.pos);
-        const rB = Vector.sub(wB, b.pos);
+        const rA = wA.clone().sub(a.physPos);
+        const rB = wB.clone().sub(b.physPos);
         const rAxN = rA.x * n.y - rA.y * n.x;
         const rBxN = rB.x * n.y - rB.y * n.x;
         let K = a.invMass + b.invMass + rAxN * rAxN * a.invInertia + rBxN * rBxN * b.invInertia;
         if (K === 0) return;
 
         const corr = -C / K * 0.2;
-        a.pos.x -= n.x * corr * a.invMass; a.pos.y -= n.y * corr * a.invMass;
-        b.pos.x += n.x * corr * b.invMass; b.pos.y += n.y * corr * b.invMass;
-    }
-
-    draw(ctx) {
-        ctx.strokeStyle = "#4488ff";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([4, 4]);
-        ctx.beginPath();
-        ctx.moveTo(this.worldA.x, this.worldA.y);
-        ctx.lineTo(this.worldB.x, this.worldB.y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = "#4488ff";
-        ctx.beginPath();
-        ctx.arc(this.worldA.x, this.worldA.y, 4, 0, Math.PI * 2);
-        ctx.arc(this.worldB.x, this.worldB.y, 4, 0, Math.PI * 2);
-        ctx.fill();
+        a.physPos.x -= n.x * corr * a.invMass; a.physPos.y -= n.y * corr * a.invMass;
+        b.physPos.x += n.x * corr * b.invMass; b.physPos.y += n.y * corr * b.invMass;
     }
 }
+
+class SpringConstraint extends Constraint {}

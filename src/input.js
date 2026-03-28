@@ -149,15 +149,12 @@ class InputManager {
         switch (event.type) {
             case "start":
                 state.pressed = true;
-                state.value = event.value;
-                break;
-            case "change":
-                state.value = event.value;
                 break;
             case "end":
                 state.pressed = false;
                 break;
         }
+        state.value = event.value;
 
         const bindings = this._controlToBindings.get(key);
 
@@ -185,7 +182,7 @@ class InputManager {
             } else if (wasActive && isActive) {
                 this._emitAction(binding.action, "change", action.value);
             } else if (wasActive && !isActive) {
-                this._emitAction(binding.action, "end");
+                this._emitAction(binding.action, "end", action.value);
             }
         }
     }
@@ -499,7 +496,7 @@ class PointerControl extends InputControl {
         }
 
         if (eventType === "end") {
-            this.onPointerEnd();
+            this.onPointerEnd(pos);
             this.pointerId = null;
         }
 
@@ -517,11 +514,15 @@ class PointerControl extends InputControl {
 
     /**
      * 
-     * @param {Vector} position 
+     * @param {Vector} pos 
      */
-    onPointerMove(position) { }
+    onPointerMove(pos) { }
 
-    onPointerEnd() { }
+    /**
+     * 
+     * @param {Vector} pos 
+     */
+    onPointerEnd(pos) { }
 }
 
 /**
@@ -576,8 +577,12 @@ class PointerPosition extends PointerControl {
         this.emitDeviceEvent("change", this.posVector);
     }
 
-    onPointerEnd() {
-        this.emitDeviceEvent("end");
+    /**
+     * @param {Vector} pos
+     */
+    onPointerEnd(pos) {
+        this.posVector.copy(this._toWorld(pos));
+        this.emitDeviceEvent("end", this.posVector);
     }
 }
 

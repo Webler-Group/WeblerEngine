@@ -61,6 +61,56 @@
             }
         }
 
+        // ─── Constraint drawable ─────────────────────────────────────────────
+
+        class ConstraintDrawable extends Drawable {
+            /**
+             * @type {DistanceConstraint}
+             */
+            constraint;
+            /**
+             * @type {string}
+             */
+            color;
+            /**
+             * @type {number}
+             */
+            lineWidth;
+
+            /**
+             * @param {DistanceConstraint} constraint
+             * @param {DrawableParams & { color?: string, lineWidth?: number }} params
+             */
+            constructor(constraint, params = {}) {
+                super(params);
+                this.constraint = constraint;
+                this.color = params.color ?? "rgba(255,255,255,0.55)";
+                this.lineWidth = params.lineWidth ?? 2;
+            }
+
+            /**
+             * @param {CanvasRenderingContext2D} ctx
+             */
+            draw(ctx) {
+                const c = this.constraint;
+                const wA = c.getWorldAnchor(c.bodyA, c.localA);
+                const wB = c.getWorldAnchor(c.bodyB, c.localB);
+                ctx.beginPath();
+                ctx.moveTo(wA.x, wA.y);
+                ctx.lineTo(wB.x, wB.y);
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = this.lineWidth;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(wA.x, wA.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(wB.x, wB.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
         // ─── Body factories ───────────────────────────────────────────────────
 
         function makeCircle(scene, x, y, radius, color, params = {}) {
@@ -106,6 +156,26 @@
             return body;
         }
 
+        function makePin(scene, x, y, camera) {
+            const body = new Body({ radius: 5, mass: 0, type: "Circle", restitution: 0, friction: 0 });
+            body.physPos.set(x, y);
+            body.position.set(x, y);
+            body.setStatic();
+            scene.addNode(body);
+            const visual = new CircleDrawable({ radius: 5, fillColor: "#cccccc", camera, zIndex: 2 });
+            visual.setParent(body);
+            scene.addNode(visual);
+            return body;
+        }
+
+        function makeConstraint(scene, bodyA, bodyB, localA, localB, camera) {
+            const constraint = new DistanceConstraint(bodyA, bodyB, localA, localB);
+            scene.addNode(constraint);
+            const visual = new ConstraintDrawable(constraint, { camera, zIndex: 0 });
+            scene.addNode(visual);
+            return constraint;
+        }
+
         // ─── Scene setup ──────────────────────────────────────────────────────
 
         const solver = new Solver();
@@ -122,26 +192,41 @@
             camera.position.set(W / 2, H / 2);
             scene.addNode(camera);
 
-            // Open-top box: bottom, left wall, right wall
+            // Closed box: bottom, left, right, top walls
             makeBox(scene, W / 2, H - T, W, T * 2, "#616161", { isStatic: true, camera });
-            makeBox(scene, T, H / 2, T * 2, H, "#616161", { isStatic: true, camera });
+            makeBox(scene, T,     H / 2, T * 2, H, "#616161", { isStatic: true, camera });
             makeBox(scene, W - T, H / 2, T * 2, H, "#616161", { isStatic: true, camera });
+            makeBox(scene, W / 2, T,     W, T * 2, "#616161", { isStatic: true, camera });
 
-            // Inner bounds for spawning
-            const minX = T * 2 + 40, maxX = W - T * 2 - 40;
-            const minY = 40, maxY = H - T * 2 - 40;
+            const zero = new Vector(0, 0);
 
-            // Random circles
-            for (let i = 0; i < 8; i++) {
-                const r = rnd(12, 28);
-                makeCircle(scene, rnd(minX, maxX), rnd(minY, maxY * 0.5), r, pick(), { camera });
-            }
+            // ── Left: 3-link pendulum chain ───────────────────────────────────
+            const pin1 = makePin(scene, 160, 60, camera);
+            const ball1 = makeCircle(scene, 210, 160, 18, "#e74c3c", { mass: 2, camera });
+            const ball2 = makeCircle(scene, 260, 270, 18, "#e91e63", { mass: 2, camera });
+            const ball3 = makeCircle(scene, 220, 380, 14, "#ff5722", { mass: 1.5, camera });
+            makeConstraint(scene, pin1,  ball1, zero, zero, camera);
+            makeConstraint(scene, ball1, ball2, zero, zero, camera);
+            makeConstraint(scene, ball2, ball3, zero, zero, camera);
 
-            // Random boxes
-            for (let i = 0; i < 7; i++) {
-                const w = rnd(30, 60), h = rnd(30, 60);
-                makeBox(scene, rnd(minX, maxX), rnd(minY, maxY * 0.5), w, h, pick(), { angle: rnd(0, Math.PI), camera });
-            }
+            // ── Center: box chain hanging from a pin ──────────────────────────
+            const pin2 = makePin(scene, 400, 60, camera);
+            const cbox1 = makeBox(scene, 400, 170, 40, 25, "#3498db", { mass: 3, camera });
+            const cbox2 = makeBox(scene, 400, 300, 50, 30, "#1abc9c", { mass: 4, camera });
+            makeConstraint(scene, pin2,  cbox1, zero, zero, camera);
+            makeConstraint(scene, cbox1, cbox2, zero, zero, camera);
+
+            // ── Right: box suspended by two ropes ────────────────────────────
+            const pin3 = makePin(scene, 590, 60, camera);
+            const pin4 = makePin(scene, 700, 60, camera);
+            const platform = makeBox(scene, 645, 220, 90, 22, "#f39c12", { mass: 5, camera });
+            makeConstraint(scene, pin3, platform, zero, new Vector(-35, -11), camera);
+            makeConstraint(scene, pin4, platform, zero, new Vector( 35, -11), camera);
+
+            // A few loose balls to interact with the structures
+            makeCircle(scene, 160, 420, 14, "#9b59b6", { mass: 1.5, vx:  80, camera });
+            makeCircle(scene, 400, 420, 12, "#8bc34a", { mass: 1,   vx: -60, camera });
+            makeCircle(scene, 645, 380, 12, "#e67e22", { mass: 1,   vx:  50, camera });
 
             const pointerPosControl = new PointerPosition(im.getDevice("pointer"), { camera });
             pointerPosControl.name = "pointer";
@@ -170,7 +255,7 @@
                     for (const body of sm.currentScene.findNodesByType(Body)) {
                         if (body.invMass > 0) body.applyForce(GRAVITY.clone().scale(body.mass));
                     }
-                    solver.step(sm.currentScene.findNodesByType(Body), dt);
+                    solver.step(sm.currentScene.findNodesByType(Body), sm.currentScene.findNodesByType(Constraint), dt);
                     sm.currentScene.updateWorldTransforms();
                     renderer.render(sm.currentScene.findNodesByType(Drawable));
                 }
