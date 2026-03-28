@@ -227,6 +227,90 @@ class CircleDrawable extends Drawable {
 }
 
 /**
+ * @typedef {{ vertices: { x: number, y: number }[], fillColor: string | null, strokeColor?: string | null, lineWidth?: number } & DrawableParams} PolygonDrawableParams
+ */
+
+/**
+ * A Drawable that renders a convex or concave polygon defined by a list of
+ * vertices in local space.
+ *
+ * Vertices are in local space relative to the node's origin. The world
+ * transform (position, angle, scale) is applied by Renderer before draw()
+ * is called.
+ *
+ * Set fillColor or strokeColor to null to skip that part of the draw.
+ * Extend this class and call super.draw(ctx) to add custom rendering on top.
+ */
+class PolygonDrawable extends Drawable {
+    /**
+     * Vertices of the polygon in local space.
+     * @type {{ x: number, y: number }[]}
+     */
+    vertices;
+    /**
+     * CSS fill color, or null to skip filling.
+     * @type {string | null}
+     */
+    fillColor;
+    /**
+     * CSS stroke color, or null to skip stroking.
+     * @type {string | null}
+     */
+    strokeColor;
+    /**
+     * Stroke width in local units.
+     * @type {number}
+     */
+    lineWidth;
+
+    /**
+     * @param {PolygonDrawableParams} params
+     */
+    constructor(params = {}) {
+        super(params);
+        this.vertices = params.vertices;
+        this.fillColor = params.fillColor;
+        this.strokeColor = params.strokeColor ?? null;
+        this.lineWidth = params.lineWidth ?? 1;
+        if (this.vertices && this.vertices.length > 0) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const v of this.vertices) {
+                if (v.x < minX) minX = v.x;
+                if (v.y < minY) minY = v.y;
+                if (v.x > maxX) maxX = v.x;
+                if (v.y > maxY) maxY = v.y;
+            }
+            this.bounds = { minX, minY, maxX, maxY };
+        }
+    }
+
+    /**
+     * Draws the polygon in the Renderer-applied world transform space.
+     * Fills first (if fillColor is set), then strokes (if strokeColor is set).
+     *
+     * @param {CanvasRenderingContext2D} ctx
+     */
+    draw(ctx) {
+        if (!this.vertices || this.vertices.length < 2) return;
+        ctx.beginPath();
+        ctx.moveTo(this.vertices[0].x, this.vertices[0].y);
+        for (let i = 1; i < this.vertices.length; i++) {
+            ctx.lineTo(this.vertices[i].x, this.vertices[i].y);
+        }
+        ctx.closePath();
+        if (this.fillColor !== null) {
+            ctx.fillStyle = this.fillColor;
+            ctx.fill();
+        }
+        if (this.strokeColor !== null) {
+            ctx.strokeStyle = this.strokeColor;
+            ctx.lineWidth = this.lineWidth;
+            ctx.stroke();
+        }
+    }
+}
+
+/**
  * A rectangular region on a sprite atlas, in pixels.
  * @typedef {{ x: number, y: number, width: number, height: number }} SpriteRegion
  */

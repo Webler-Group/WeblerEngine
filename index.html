@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <canvas></canvas>
+
+    <script src="src/utils.js"></script>
+    <script src="src/core.js"></script>
+    <script src="src/graphics.js"></script>
+    <script src="src/input.js"></script>
+    <script src="src/physics.js"></script>
+    
+    <script>
+        const canvas = document.querySelector("canvas");
+        canvas.width = 600;
+        canvas.height = 400;
+
+        const sm = new SceneManager();
+        const renderer = new Renderer(canvas);
+        const im = new InputManager({
+            keyboard: true
+        });
+
+        im.addBinding("player:move", { device: "keyboard", control: "dpad" });
+
+        class PlayerController extends SceneNode {
+            constructor(im) {
+                super();
+                this.im = im;
+                this.dirVec = new Vector();
+                this.handleMove = (val) => {
+                    this.dirVec.copy(val);
+                }
+            }
+
+            start() {
+                this.im.onAction("player:move", "change", this.handleMove);
+            }
+
+            destroy() {
+                this.im.offAction("player:move", "change", this.handleMove);
+            }
+
+            update(dt) {
+                this.position.add(this.dirVec.clone().normalize().scale(100 * dt));
+            }
+        }
+
+        const initPlayer = (scene, x, y) => {
+            const player = new PlayerController(im);
+            player.position.set(x, y);
+            scene.addNode(player);
+
+            const rect = new RectDrawable({ width: 50, height: 50, fillColor: "red" });
+            scene.addNode(rect);
+            rect.setParent(player);
+        }
+
+        const initDemoScene = (scene) => {
+            initPlayer(scene, 0, 200);
+
+            const dpad = new KeyboardDPad(im.getDevice("keyboard"));
+            dpad.name = "dpad";
+            scene.addNode(dpad);
+        }
+        sm.register("Demo", initDemoScene);
+        sm.switchScene("Demo");
+
+        let dt = 0;
+        let lastRAF = 0;
+        const loop = () => {
+            requestAnimationFrame(t => {
+                loop();
+
+                t *= 0.001;
+                dt = t - lastRAF || t;
+                lastRAF = t;
+
+                sm.update(dt);
+                renderer.render(sm.currentScene?.findNodesByType(Drawable) ?? []);
+            });
+        }
+        loop();
+
+    </script>
+</body>
+</html>
